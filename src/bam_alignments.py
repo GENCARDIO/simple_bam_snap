@@ -43,7 +43,7 @@ class ViewAlns():
     def generate_view(self):
         '''
         '''
-        coordinate = ("{}:{}-{}").format(self._chr, str(self._start), str(self._end))      
+        coordinate = ("{}:{}-{}").format(self._chr, str(self._start), str(self._end))     
         cmd = "export COLUMNS=100; {} tview -d T -p {} {} {}".format(SAMTOOLS, coordinate, self._bam, self._fasta)
         p1 = subprocess.run(cmd, shell=True, stdout=subprocess.PIPE,
             stderr=subprocess.PIPE)
@@ -60,17 +60,39 @@ class ViewAlns():
 
             limits = [ 0, max_size, max_depth, 0]
             plt.axis(limits)
-            y = 2
+            y = 0
             n_lines = 0
             for line in tmp_output:
                 chunks: list(str) = line.split(" ")
                 x = 0
+                if n_lines == 1:
+                    ref_list = list(line)
+                    ref_pos = 0
+                    for base in ref_list:
+                        if base !="." and base !=",":
+                            if base.upper() == "A":
+                                colour = "green"
+                            elif base.upper() == "C":
+                                colour = "blue"
+                            elif base.upper() == "T":
+                                colour = "red"
+                            elif base.upper() == "G":
+                                colour = "orange"
+                            else:
+                                colour = "white"
+
+                            ax.text(ref_pos, y, base, color=colour, stretch="condensed", size=4.8)                                
+                            #ax.add_patch(Rectangle((ref_pos, y), 1, 1, color=colour))
+                        ref_pos+=1
+
                 if n_lines > 1:
                     for chunk in chunks:
                         if chunk != "":
                             ax.add_patch(Rectangle((x, y), len(chunk), 1, color="#cccccc"))
                             tmp_chunk = list(chunk)
                             pos_base = x
+                            size_base = 1
+                            span_base = 1                            
                             for base in tmp_chunk:
                                 if base !="." and base !=",":
                                     if base.upper() == "A":
@@ -82,9 +104,9 @@ class ViewAlns():
                                     elif base.upper() == "G":
                                         colour = "orange"
                                     else:
-                                        colour = "black"
-                                    base = "_"
-                                    ax.text(pos_base, y, base, color=colour, fontsize=10)
+                                        colour = "white"
+                                        plt.plot([pos_base, pos_base+1], [y+0.45, y+0.45], color='black', linewidth=0.5)
+                                    ax.add_patch(Rectangle((pos_base, y), span_base, size_base, color=colour))
                                 pos_base+=1
                         if chunk == "":
                             x+=1
@@ -92,7 +114,10 @@ class ViewAlns():
                             x = len(chunk)+1
                 y+=1
                 n_lines+=1
-            plt.savefig(self._output_png)
+
+            plt.axvline(x=50, linewidth=0.5, color='black', linestyle='--')
+            plt.axvline(x=51, linewidth=0.5, color='black', linestyle='--')
+            plt.savefig(self._output_png, dpi=300)
 
 class BamAlns():
     '''
