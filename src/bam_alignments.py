@@ -58,7 +58,7 @@ class ViewAlns():
             if max_size < 100:
                 max_size = 100
 
-            limits = [ 2, max_depth, max_size, 0]
+            limits = [ 0, max_size, max_depth, 0]
             plt.axis(limits)
             y = 2
             n_lines = 0
