@@ -14,11 +14,10 @@ class SimpleBamSnap():
     '''
         Main class to deploy functionalities
     '''
-    def __init__(self, bam, region, fasta, offset, output_dir, output_name):
+    def __init__(self, bam, region, fasta, output_dir, output_name):
         self._bam    = bam
         self._region = region
         self._fasta  = fasta
-        self._offset = offset
         self._output_dir = output_dir
         self._output_name = output_name
 
