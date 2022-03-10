@@ -31,6 +31,7 @@ class ViewAlns():
 
     def load_bam(self):
         '''
+            Check that the input bam file can be loaded
         '''
         try:
            bam = pysam.AlignmentFile(self._bam, "rb")
@@ -42,6 +43,7 @@ class ViewAlns():
 
     def generate_view(self):
         '''
+            Decorate samtools tview stdout using matplotlib
         '''
         coordinate = ("{}:{}-{}").format(self._chr, str(self._start), str(self._end))     
         cmd = "export COLUMNS=100; {} tview -d T -p {} {} {}".format(SAMTOOLS, coordinate, self._bam, self._fasta)
@@ -119,6 +121,9 @@ class ViewAlns():
 
 class BamAlns():
     '''
+        Main idea was to collect all alignments and treat each aligment separately.
+        This is the most powerfull way but also requires more developing time.
+        Samtools tview output plotting was an easier alternative.
     '''
     def __init__(self, bam, chr, start, end):
         self._bam = bam
@@ -154,6 +159,8 @@ class BamAlns():
         '''
 
 class BamGrid():
-
+    '''
+        Not used
+    '''
     def __init__(self) -> None:
         pass
