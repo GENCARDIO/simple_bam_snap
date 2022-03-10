@@ -47,8 +47,8 @@ class SimpleBamSnap():
             type=str, required=True)
         parser.add_argument("--fasta", help="Genome file in FASTA format", 
             type=str, required=True)            
-        parser.add_argument("--offset", help="Offset flanking region", 
-            type=int, default=50)   
+        #parser.add_argument("--offset", help="Offset flanking region", 
+        #    type=int, default=50)   
         parser.add_argument("--output_dir", help="Output directory", 
             type=str, required=True)
         parser.add_argument("--output_name", help="Output name",
@@ -78,7 +78,7 @@ if __name__ == "__main__":
         os.mkdir(args.output_dir)
 
     SnapBam = SimpleBamSnap(bam=args.bam, region=args.region, fasta=args.fasta,
-        offset=args.offset, output_dir=args.output_dir, output_name=args.output_name)
+        output_dir=args.output_dir, output_name=args.output_name)
 
     SnapBam.snap()
 

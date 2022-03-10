@@ -80,11 +80,9 @@ class ViewAlns():
                                 colour = "orange"
                             else:
                                 colour = "white"
-
                             ax.text(ref_pos, y, base, color=colour, stretch="condensed", size=4.8)                                
                             #ax.add_patch(Rectangle((ref_pos, y), 1, 1, color=colour))
                         ref_pos+=1
-
                 if n_lines > 1:
                     for chunk in chunks:
                         if chunk != "":
