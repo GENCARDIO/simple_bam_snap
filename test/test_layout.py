@@ -1,0 +1,76 @@
+import os
+import sys
+from dataclasses import dataclass
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from src.layout import build_rows, expand_rows, pack_rows, truncate_rows
+
+
+@dataclass
+class FakeRead:
+    ref_start: int
+    ref_end: int
+    gap_length: int = 0
+    cigar_gap_len: int = 0
+    sa_gap_len: int = 0
+    sa_count: int = 0
+    soft_clip_total: int = 0
+    mismatch_count: int = 0
+    mapq: int = 60
+    insert_size: int = 0
+    strand: str = "+"
+    query_name: str = "r"
+
+
+def test_pack_rows_never_overlaps_within_a_row():
+    reads = [FakeRead(0, 10), FakeRead(5, 15), FakeRead(20, 30), FakeRead(9, 21)]
+    rows = pack_rows(reads, sort_by="start", descending=False, padding=0)
+    assert sum(len(r) for r in rows) == len(reads)
+    for row in rows:
+        row_sorted = sorted(row, key=lambda r: r.ref_start)
+        for a, b in zip(row_sorted, row_sorted[1:]):
+            assert a.ref_end <= b.ref_start
+
+
+def test_pack_rows_compacts_non_overlapping_reads_into_one_row():
+    reads = [FakeRead(0, 10), FakeRead(20, 30), FakeRead(40, 50)]
+    rows = pack_rows(reads, sort_by="start", descending=False, padding=0)
+    assert len(rows) == 1
+    assert len(rows[0]) == 3
+
+
+def test_expand_rows_one_read_per_row_sorted_desc_by_gap_length():
+    reads = [
+        FakeRead(0, 10, gap_length=1, query_name="a"),
+        FakeRead(20, 30, gap_length=9, query_name="b"),
+        FakeRead(40, 50, gap_length=5, query_name="c"),
+    ]
+    rows = expand_rows(reads, sort_by="gap_length", descending=True)
+    assert [row[0].query_name for row in rows] == ["b", "c", "a"]
+    assert all(len(row) == 1 for row in rows)
+
+
+def test_expand_rows_ties_broken_by_position():
+    reads = [
+        FakeRead(100, 110, gap_length=0, query_name="late"),
+        FakeRead(10, 20, gap_length=0, query_name="early"),
+    ]
+    rows = expand_rows(reads, sort_by="gap_length", descending=True)
+    assert [row[0].query_name for row in rows] == ["early", "late"]
+
+
+def test_build_rows_dispatches_on_layout():
+    reads = [FakeRead(0, 10, query_name="a"), FakeRead(20, 30, query_name="b")]
+    assert len(build_rows(reads, layout="expand", sort_by="start", descending=False)) == 2
+    assert len(build_rows(reads, layout="pack", sort_by="start", descending=False)) == 1
+
+
+def test_truncate_rows_keeps_highest_priority_rows():
+    rows = [[FakeRead(0, 10)], [FakeRead(20, 30)], [FakeRead(40, 50), FakeRead(60, 70)]]
+    kept, dropped = truncate_rows(rows, max_rows=2)
+    assert len(kept) == 2
+    assert dropped == 2  # the two reads in the third row
+
+    kept, dropped = truncate_rows(rows, max_rows=None)
+    assert kept == rows and dropped == 0
