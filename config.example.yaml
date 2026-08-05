@@ -33,10 +33,15 @@ preferences:
   phase_set_tag: PS
   view_as_pairs: false
   center_guide: false
+  sashimi: false
+  min_junction_reads: 1
+  sashimi_strand: combined
   mate_view: false
   mate_window_source: discordant
   annotate_gap: true
   fig_width: 14.0
+  # Omit output_format to infer it from output_name, falling back to PNG.
+  # output_format: png
   dpi: 150
 
 alignment_colors:
@@ -84,6 +89,9 @@ visual_colors:
   center_guide: "#52514e"
   cnv_gain: "#d73027"
   cnv_loss: "#2878b5"
+  sashimi_combined: "#24557f"
+  sashimi_plus: "#24557f"
+  sashimi_minus: "#8b3f73"
 
 haplotype_colors:
   "1": "#3b6fb6"
@@ -137,3 +145,9 @@ styles:
   center_guide_alpha: 0.65
   center_guide_width: 0.80
   center_guide_line_style: "--"
+  sashimi_track_height_in: 1.25
+  sashimi_arc_alpha: 0.85
+  sashimi_min_line_width: 0.80
+  sashimi_max_line_width: 4.00
+  sashimi_arc_height: 0.78
+  sashimi_label_size: 6.00

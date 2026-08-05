@@ -21,6 +21,7 @@ from src.render import (
     compute_coverage,
     compute_snv_evidence,
     compute_snv_counts,
+    compute_splice_junctions,
     ellipsize,
     haplotype_color,
 )
@@ -266,6 +267,43 @@ def test_center_guide_is_hidden_by_default_and_centered_when_enabled():
     assert len(visible_ax.lines) == 1
     assert list(visible_ax.lines[0].get_xdata()) == [150, 150]
     assert visible_ax.lines[0].get_linestyle() == "--"
+    plt.close(fig)
+
+
+def test_sashimi_counts_cigar_skips_and_can_split_strands():
+    reads = [
+        SimpleNamespace(strand="+", deletions=[(120, 80, True)]),
+        SimpleNamespace(strand="+", deletions=[(120, 80, True)]),
+        SimpleNamespace(strand="-", deletions=[(120, 80, True)]),
+        SimpleNamespace(strand="+", deletions=[(140, 10, False)]),
+    ]
+
+    assert compute_splice_junctions(reads) == {(120, 200, "."): 3}
+    assert compute_splice_junctions(reads, "split") == {
+        (120, 200, "+"): 2,
+        (120, 200, "-"): 1,
+    }
+
+
+def test_sashimi_draws_supported_count_labelled_arcs():
+    reads = [
+        SimpleNamespace(strand="+", deletions=[(120, 80, True)]),
+        SimpleNamespace(strand="+", deletions=[(120, 80, True)]),
+        SimpleNamespace(strand="-", deletions=[(120, 80, True)]),
+    ]
+    renderer = AlignmentRenderer(
+        show_sashimi=True, min_junction_reads=1, sashimi_strand="split"
+    )
+    fig, ax = plt.subplots()
+
+    renderer.draw_sashimi_track(ax, reads, 100, 220)
+
+    assert len(ax.patches) == 2
+    labels = set()
+    for text in ax.texts:
+        labels.add(text.get_text())
+    assert {"splice junctions", "+2", "-1"}.issubset(labels)
+    assert ax.get_ylim() == pytest.approx((-1.05, 1.05))
     plt.close(fig)
 
 

@@ -119,6 +119,7 @@ def test_yaml_preferences_become_defaults_but_cli_still_wins():
         "view_as_pairs": True,
         "show_coverage": False,
         "include_supplementary": False,
+        "output_format": "svg",
     })
 
     configured = parser.parse_args([
@@ -134,6 +135,7 @@ def test_yaml_preferences_become_defaults_but_cli_still_wins():
     assert configured.view_as_pairs
     assert configured.no_coverage
     assert configured.exclude_supplementary
+    assert configured.output_format == "svg"
     assert overridden.display_mode == "expand"
     assert overridden.max_alignment_depth == 80
 

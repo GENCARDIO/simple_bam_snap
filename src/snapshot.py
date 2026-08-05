@@ -1,4 +1,4 @@
-"""Top-level orchestration: region -> reads -> rows -> PNG (+ optional TSV).
+"""Top-level orchestration: region -> reads -> rows -> image (+ optional TSV).
 
 Two entry points:
 
@@ -28,6 +28,43 @@ from src.render import (
     DEFAULT_COVERAGE_VAF_THRESHOLD,
     DEFAULT_MAX_REFERENCE_SPAN,
 )
+
+OUTPUT_FORMATS = ("png", "svg", "svgz", "pdf", "jpg", "jpeg", "tif", "tiff", "webp")
+
+
+def resolve_output_path(
+    output_dir: str,
+    output_name: Optional[str],
+    default_stem: str,
+    output_format: Optional[str] = None,
+) -> str:
+    """Resolve an output filename, inferring its format from a known suffix."""
+    selected_format = output_format.lower().lstrip(".") if output_format else None
+    if selected_format is not None and selected_format not in OUTPUT_FORMATS:
+        choices = ", ".join(OUTPUT_FORMATS)
+        raise ValueError(f"Unsupported output format {output_format!r}; choose from {choices}.")
+
+    name = output_name or default_stem
+    path = Path(name)
+    suffix = path.suffix.lower().lstrip(".")
+    if selected_format is None:
+        if suffix:
+            if suffix not in OUTPUT_FORMATS:
+                choices = ", ".join(OUTPUT_FORMATS)
+                raise ValueError(
+                    f"Unsupported output filename extension '.{suffix}'; choose from {choices}."
+                )
+            selected_format = suffix
+        else:
+            selected_format = "png"
+
+    if suffix in OUTPUT_FORMATS:
+        path = path.with_suffix(f".{selected_format}")
+    elif not suffix:
+        path = path.with_suffix(f".{selected_format}")
+    else:
+        path = Path(f"{path}.{selected_format}")
+    return str(Path(output_dir) / path)
 
 
 class BamSnapshot:
@@ -71,6 +108,9 @@ class BamSnapshot:
         annotation_sources: Optional[List[AnnotationSource]] = None,
         show_ideogram: bool = True,
         show_center_guide: bool = False,
+        show_sashimi: bool = False,
+        min_junction_reads: int = 1,
+        sashimi_strand: str = "combined",
         genome: str = "auto",
         cytoband_file: Optional[str] = None,
         max_reference_span: int = DEFAULT_MAX_REFERENCE_SPAN,
@@ -83,6 +123,7 @@ class BamSnapshot:
         haplotype_filter: Optional[List[str]] = None,
         haplotype_tag: str = "HP",
         phase_set_tag: str = "PS",
+        output_format: Optional[str] = None,
     ):
         self.bam = bam
         self.chrom = chrom
@@ -91,6 +132,7 @@ class BamSnapshot:
         self.fasta = fasta
         self.output_dir = output_dir
         self.output_name = output_name
+        self.output_format = output_format
         self.layout = layout
         self.sort_by = sort_by
         self.sort_base_position = sort_base_position
@@ -122,6 +164,9 @@ class BamSnapshot:
         self.annotation_sources = list(annotation_sources or [])
         self.show_ideogram = show_ideogram
         self.show_center_guide = show_center_guide
+        self.show_sashimi = show_sashimi
+        self.min_junction_reads = min_junction_reads
+        self.sashimi_strand = sashimi_strand
         self.genome = genome
         self.cytoband_file = cytoband_file
         self.max_reference_span = max_reference_span
@@ -138,10 +183,14 @@ class BamSnapshot:
         os.makedirs(self.output_dir, exist_ok=True)
 
         default_prefix = "mate_" if mate_view else ""
-        name = self.output_name or f"{default_prefix}{chrom}_{start}_{end}.png"
-        if not name.endswith(".png"):
-            name += ".png"
-        self.output_png = str(Path(self.output_dir) / name)
+        self.output_path = resolve_output_path(
+            self.output_dir,
+            self.output_name,
+            f"{default_prefix}{chrom}_{start}_{end}",
+            self.output_format,
+        )
+        # Kept as a compatibility alias for callers written before multi-format export.
+        self.output_png = self.output_path
 
         self.reads: List[AlignedRead] = []
         self.source_reads: List[AlignedRead] = []
@@ -238,6 +287,9 @@ class BamSnapshot:
             sort_base_position=base_position if self.sort_by == "base" else None,
             sort_reference_base=reference_base,
             show_center_guide=self.show_center_guide,
+            show_sashimi=self.show_sashimi,
+            min_junction_reads=self.min_junction_reads,
+            sashimi_strand=self.sashimi_strand,
         )
         sort_label = self.sort_by
         if self.sort_by == "base":
@@ -361,7 +413,7 @@ class BamSnapshot:
                         "cytobands": bands_for_chrom(self.cytobands, mate.chrom),
                     },
                 ],
-                out_path=self.output_png,
+                out_path=self.output_path,
                 suptitle=(
                     f"{self.label} mate view -- display={self.display_mode}, layout={self.layout}, "
                     f"view={'pairs' if self.view_as_pairs else 'alignments'}, "
@@ -372,7 +424,7 @@ class BamSnapshot:
         else:
             renderer.render(
                 rows=rows, chrom=self.chrom, window_start=self.start, window_end=self.end,
-                reference=self.reference_window, out_path=self.output_png, title=title,
+                reference=self.reference_window, out_path=self.output_path, title=title,
                 layout=self.layout, dropped_reads=dropped, all_reads_for_coverage=reads,
                 downsampled_reads=self.downsampled_reads,
                 genomic_tracks=genomic_tracks,
@@ -428,6 +480,9 @@ def compare_snapshots(
     annotation_sources: Optional[List[AnnotationSource]] = None,
     show_ideogram: bool = True,
     show_center_guide: bool = False,
+    show_sashimi: bool = False,
+    min_junction_reads: int = 1,
+    sashimi_strand: str = "combined",
     genome: str = "auto",
     cytoband_file: Optional[str] = None,
     max_reference_span: int = DEFAULT_MAX_REFERENCE_SPAN,
@@ -440,8 +495,9 @@ def compare_snapshots(
     haplotype_filter: Optional[List[str]] = None,
     haplotype_tag: str = "HP",
     phase_set_tag: str = "PS",
+    output_format: Optional[str] = None,
 ) -> tuple[str, str]:
-    """Renders both BAMs stacked in one PNG, sharing a genomic x-axis, and
+    """Renders both BAMs stacked in one image, sharing a genomic x-axis, and
     returns a plain-text comparison table (also handy to print/log)."""
     os.makedirs(output_dir, exist_ok=True)
     label1 = label1 or Path(bam1).stem
@@ -511,10 +567,9 @@ def compare_snapshots(
             "downsampled_reads": downsampled,
         })
 
-    name = output_name or f"compare_{chrom}_{start}_{end}.png"
-    if not name.endswith(".png"):
-        name += ".png"
-    out_path = str(Path(output_dir) / name)
+    out_path = resolve_output_path(
+        output_dir, output_name, f"compare_{chrom}_{start}_{end}", output_format
+    )
 
     renderer = AlignmentRenderer(
         fig_width=fig_width, dpi=dpi, show_coverage=show_coverage, annotate_gap=annotate_gap,
@@ -533,6 +588,9 @@ def compare_snapshots(
         sort_base_position=base_position if sort_by == "base" else None,
         sort_reference_base=reference_base,
         show_center_guide=show_center_guide,
+        show_sashimi=show_sashimi,
+        min_junction_reads=min_junction_reads,
+        sashimi_strand=sashimi_strand,
     )
     renderer.render_multi(
         panels=panels, chrom=chrom, window_start=start, window_end=end,

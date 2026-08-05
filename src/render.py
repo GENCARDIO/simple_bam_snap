@@ -8,14 +8,15 @@ mismatches are geometrically exact instead of guessed from column spacing.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from math import ceil
+from math import ceil, sqrt
 from typing import Any, Dict, List, Optional, Tuple
 
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
-from matplotlib.patches import Patch, Polygon, Rectangle
+from matplotlib.patches import Patch, PathPatch, Polygon, Rectangle
+from matplotlib.path import Path
 from matplotlib.ticker import MaxNLocator
 
 from src.annotations import (
@@ -210,6 +211,23 @@ def compute_snv_evidence(
     return depth, evidence
 
 
+def compute_splice_junctions(
+    reads: List[AlignedRead], strand_mode: str = "combined"
+) -> Dict[Tuple[int, int, str], int]:
+    """Count RNA splice junctions represented by CIGAR N operations."""
+    if strand_mode not in ("combined", "split"):
+        raise ValueError("Sashimi strand mode must be combined or split.")
+    junctions = {}
+    for read in reads:
+        strand = read.strand if strand_mode == "split" else "."
+        for position, length, is_skip in read.deletions:
+            if not is_skip or length <= 0:
+                continue
+            key = (position, position + length, strand)
+            junctions[key] = junctions.get(key, 0) + 1
+    return junctions
+
+
 def nice_tick_positions(start: int, end: int, target: int = 8) -> List[int]:
     locator = MaxNLocator(nbins=target, steps=[1, 2, 5, 10])
     ticks = []
@@ -264,6 +282,9 @@ class AlignmentRenderer:
         sort_base_position: Optional[int] = None,
         sort_reference_base: Optional[str] = None,
         show_center_guide: bool = False,
+        show_sashimi: bool = False,
+        min_junction_reads: int = 1,
+        sashimi_strand: str = "combined",
     ):
         theme = visual_config or load_config()
         self.base_colors = dict(theme["base_colors"])
@@ -277,6 +298,13 @@ class AlignmentRenderer:
         self.active_sort_base_position = sort_base_position
         self.active_sort_reference_base = sort_reference_base
         self.show_center_guide = show_center_guide
+        self.show_sashimi = show_sashimi
+        if min_junction_reads < 1:
+            raise ValueError("Minimum junction-read support must be at least one.")
+        self.min_junction_reads = min_junction_reads
+        if sashimi_strand not in ("combined", "split"):
+            raise ValueError("Sashimi strand mode must be combined or split.")
+        self.sashimi_strand = sashimi_strand
         self.fig_width = fig_width
         self.dpi = dpi
         self.show_coverage = show_coverage
@@ -414,6 +442,9 @@ class AlignmentRenderer:
         if self.show_coverage:
             tracks.append("coverage")
             ratios.append(1.4)
+        if self.show_sashimi:
+            tracks.append("sashimi")
+            ratios.append(self.styles["sashimi_track_height_in"])
         tracks.append("alignments")
         ratios.append(max(n_rows * self.row_height_in, self.row_height_in))
 
@@ -490,6 +521,16 @@ class AlignmentRenderer:
                     cov_reads.extend(row)
             self.draw_coverage_track(cov_ax, cov_reads, window_start, window_end)
 
+        if self.show_sashimi:
+            sashimi_reads = all_reads_for_coverage
+            if sashimi_reads is None:
+                sashimi_reads = []
+                for row in rows:
+                    sashimi_reads.extend(row)
+            self.draw_sashimi_track(
+                ax_by_track["sashimi"], sashimi_reads, window_start, window_end
+            )
+
         # --- alignments --------------------------------------------------
         aln_ax = ax_by_track["alignments"]
         aln_ax.set_ylim(n_rows, 0)
@@ -536,7 +577,7 @@ class AlignmentRenderer:
                             bottom=bottom_margin_in / fig_height)
         legends = self.draw_legends(fig, fig_height, plot_left, plot_right)
         self.separate_legend_from_plots(fig, axes, legends)
-        fig.savefig(out_path)
+        fig.savefig(out_path, dpi=self.dpi)
         plt.close(fig)
 
     def draw_coverage_track(
@@ -619,6 +660,77 @@ class AlignmentRenderer:
             linestyle=self.styles["center_guide_line_style"],
             zorder=20,
         )
+
+    def draw_sashimi_track(
+        self, ax, reads: List[AlignedRead], start: int, end: int
+    ) -> None:
+        """Draw count-labelled splice-junction arcs from CIGAR N blocks."""
+        junctions = compute_splice_junctions(reads, self.sashimi_strand)
+        visible = []
+        for junction, count in junctions.items():
+            donor, acceptor, strand = junction
+            if count >= self.min_junction_reads and start <= donor < acceptor <= end:
+                visible.append((donor, acceptor, strand, count))
+        visible.sort(key=lambda item: (item[1] - item[0], item[0]), reverse=True)
+
+        if self.sashimi_strand == "split":
+            ax.set_ylim(-1.05, 1.05)
+        else:
+            ax.set_ylim(-0.08, 1.05)
+        ax.axhline(
+            0, color=self.visual_colors["axis"], linewidth=0.55, zorder=1
+        )
+        ax.text(
+            -0.012, 0.5, "splice junctions", transform=ax.transAxes,
+            ha="right", va="center", fontsize=7,
+            color=self.visual_colors["sashimi_combined"],
+            fontweight="bold", clip_on=False,
+        )
+        if not visible:
+            ax.text(
+                0.01, 0.60, f"No junctions with ≥{self.min_junction_reads} read(s)",
+                transform=ax.transAxes, ha="left", va="center", fontsize=6.5,
+                color=self.visual_colors["secondary_text"],
+            )
+            return
+
+        maximum_span = max(acceptor - donor for donor, acceptor, strand, count in visible)
+        maximum_count = max(count for donor, acceptor, strand, count in visible)
+        for donor, acceptor, strand, count in visible:
+            span = acceptor - donor
+            direction = -1 if self.sashimi_strand == "split" and strand == "-" else 1
+            height = self.styles["sashimi_arc_height"] * sqrt(span / maximum_span)
+            height *= direction
+            color_key = (
+                "sashimi_minus" if direction < 0 else
+                "sashimi_plus" if self.sashimi_strand == "split" else
+                "sashimi_combined"
+            )
+            width_fraction = sqrt(count / maximum_count)
+            line_width = self.styles["sashimi_min_line_width"] + width_fraction * (
+                self.styles["sashimi_max_line_width"]
+                - self.styles["sashimi_min_line_width"]
+            )
+            vertices = [
+                (donor, 0),
+                (donor + span * 0.28, height),
+                (acceptor - span * 0.28, height),
+                (acceptor, 0),
+            ]
+            path = Path(vertices, [Path.MOVETO, Path.CURVE4, Path.CURVE4, Path.CURVE4])
+            ax.add_patch(PathPatch(
+                path, facecolor="none", edgecolor=self.visual_colors[color_key],
+                linewidth=line_width, alpha=self.styles["sashimi_arc_alpha"],
+                capstyle="round", zorder=3,
+            ))
+            strand_label = strand if self.sashimi_strand == "split" else ""
+            label_y = height + direction * 0.06
+            ax.text(
+                donor + span / 2, label_y, f"{strand_label}{count}",
+                ha="center", va="bottom" if direction > 0 else "top",
+                fontsize=self.styles["sashimi_label_size"],
+                color=self.visual_colors[color_key], fontweight="bold", zorder=4,
+            )
 
     def draw_ideogram(
         self,
@@ -1247,13 +1359,18 @@ class AlignmentRenderer:
         for i, panel in enumerate(panels):
             n_rows = max(len(panel["rows"]), 1)
             header_name = f"panel_header_{i}"
-            cov_name, aln_name = f"coverage_{i}", f"alignments_{i}"
-            panel_track_names.append((header_name, cov_name, aln_name))
+            cov_name = f"coverage_{i}"
+            sashimi_name = f"sashimi_{i}"
+            aln_name = f"alignments_{i}"
+            panel_track_names.append((header_name, cov_name, sashimi_name, aln_name))
             tracks.append(header_name)
             ratios.append(self.styles["panel_header_height_in"])
             if self.show_coverage:
                 tracks.append(cov_name)
                 ratios.append(1.2)
+            if self.show_sashimi:
+                tracks.append(sashimi_name)
+                ratios.append(self.styles["sashimi_track_height_in"])
             tracks.append(aln_name)
             ratios.append(max(n_rows * self.row_height_in, self.row_height_in))
 
@@ -1315,7 +1432,7 @@ class AlignmentRenderer:
             rows = panel["rows"]
             layout = panel.get("layout", "pack")
             n_rows = max(len(rows), 1)
-            header_name, cov_name, aln_name = panel_track_names[i]
+            header_name, cov_name, sashimi_name, aln_name = panel_track_names[i]
 
             panel_label = panel.get("label", f"bam{i+1}")
             if panel.get("downsampled_reads"):
@@ -1341,6 +1458,17 @@ class AlignmentRenderer:
                         cov_reads.extend(row)
                 self.draw_coverage_track(cov_ax, cov_reads, window_start, window_end)
 
+            if self.show_sashimi:
+                sashimi_reads = panel.get("all_reads_for_coverage")
+                if sashimi_reads is None:
+                    sashimi_reads = []
+                    for row in rows:
+                        sashimi_reads.extend(row)
+                self.draw_sashimi_track(
+                    ax_by_track[sashimi_name], sashimi_reads,
+                    window_start, window_end,
+                )
+
             aln_ax = ax_by_track[aln_name]
             aln_ax.set_ylim(n_rows, 0)
             self.draw_haplotype_lanes(aln_ax, rows)
@@ -1357,7 +1485,7 @@ class AlignmentRenderer:
         for track, ax in ax_by_track.items():
             if track != "ideogram" and not track.startswith("panel_header_"):
                 self.draw_center_guide(ax, window_start, window_end)
-        bottom_aln_ax = ax_by_track[panel_track_names[-1][2]]
+        bottom_aln_ax = ax_by_track[panel_track_names[-1][3]]
         bottom_aln_ax.set_xticks(tick_positions)
         bottom_aln_ax.tick_params(
             bottom=True, labelbottom=True, labelsize=9,
@@ -1372,7 +1500,7 @@ class AlignmentRenderer:
                             bottom=bottom_margin_in / fig_height)
         legends = self.draw_legends(fig, fig_height, plot_left, plot_right)
         self.separate_legend_from_plots(fig, axes, legends)
-        fig.savefig(out_path)
+        fig.savefig(out_path, dpi=self.dpi)
         plt.close(fig)
 
     def render_loci(self, panels: List[dict], out_path: str, suptitle: str = "") -> None:
@@ -1430,6 +1558,9 @@ class AlignmentRenderer:
         if self.show_coverage:
             tracks.append("coverage")
             ratios.append(1.4)
+        if self.show_sashimi:
+            tracks.append("sashimi")
+            ratios.append(self.styles["sashimi_track_height_in"])
         tracks.append("alignments")
         ratios.append(max(max_rows * self.row_height_in, self.row_height_in))
 
@@ -1543,6 +1674,16 @@ class AlignmentRenderer:
                         cov_reads.extend(row)
                 self.draw_coverage_track(cov_ax, cov_reads, start, end)
 
+            if self.show_sashimi:
+                sashimi_reads = panel.get("all_reads_for_coverage")
+                if sashimi_reads is None:
+                    sashimi_reads = []
+                    for row in rows:
+                        sashimi_reads.extend(row)
+                self.draw_sashimi_track(
+                    axes_by_track["sashimi"], sashimi_reads, start, end
+                )
+
             aln_ax = axes_by_track["alignments"]
             aln_ax.set_ylim(max_rows, 0)
             self.draw_haplotype_lanes(aln_ax, rows)
@@ -1581,7 +1722,7 @@ class AlignmentRenderer:
         for row in axes:
             plot_axes.extend(row)
         self.separate_legend_from_plots(fig, plot_axes, legends)
-        fig.savefig(out_path)
+        fig.savefig(out_path, dpi=self.dpi)
         plt.close(fig)
 
     def draw_haplotype_lanes(self, ax, rows: List[List[AlignedRead]]) -> None:

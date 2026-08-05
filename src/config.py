@@ -50,6 +50,9 @@ DEFAULT_VISUAL_COLORS = {
     "center_guide": "#52514e",
     "cnv_gain": "#d73027",
     "cnv_loss": "#2878b5",
+    "sashimi_combined": "#24557f",
+    "sashimi_plus": "#24557f",
+    "sashimi_minus": "#8b3f73",
 }
 DEFAULT_HAPLOTYPE_COLORS = {
     "1": "#3b6fb6", "2": "#e6862d", "untagged": "#9b9b96",
@@ -90,6 +93,12 @@ DEFAULT_STYLES = {
     "center_guide_alpha": 0.65,
     "center_guide_width": 0.80,
     "center_guide_line_style": "--",
+    "sashimi_track_height_in": 1.25,
+    "sashimi_arc_alpha": 0.85,
+    "sashimi_min_line_width": 0.80,
+    "sashimi_max_line_width": 4.00,
+    "sashimi_arc_height": 0.78,
+    "sashimi_label_size": 6.00,
 }
 
 DEFAULT_CONFIG: Dict[str, Any] = {
@@ -114,6 +123,7 @@ ALPHA_STYLE_KEYS = {
     "coverage_alpha", "reference_base_alpha", "cnv_fill_alpha", "baf_alpha",
     "haplotype_lane_alpha",
     "center_guide_alpha",
+    "sashimi_arc_alpha",
 }
 STRING_STYLE_CHOICES = {
     "center_guide_line_style": ("-", "--", ":", "-."),

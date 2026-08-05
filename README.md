@@ -1,7 +1,7 @@
 # simple_bam_snap
 
-`simple_bam_snap` creates IGV-like PNG snapshots directly from indexed BAM
-files. It renders structured CIGAR and SA-tag data with
+`simple_bam_snap` creates IGV-like raster or vector snapshots directly from
+indexed BAM files. It renders structured CIGAR and SA-tag data with
 [pysam](https://pysam.readthedocs.io/), so insertions, deletions, skipped
 regions, soft clips, mismatches, and split alignments retain their genomic
 geometry.
@@ -20,9 +20,11 @@ It is especially useful for reviewing structural-variant evidence:
 - colour, split, and filter alignments by haplotype and phase-set tags;
 - show a primary locus beside an automatically selected mate locus;
 - add indexed or plain BED, GFF, GTF, VCF, SEG, and log2/bedGraph tracks;
+- summarize RNA-seq splice junctions as count-labelled sashimi arcs;
 - select annotated primary gene isoforms with safe per-gene fallback;
 - combine copy-number tracks with genotype-derived BAF/LOH views;
 - compare two BAMs over the same locus;
+- export PNG, SVG, SVGZ, PDF, JPEG, TIFF, or WebP images at a chosen resolution;
 - export the computed per-read metrics to TSV;
 - configure behaviour, all plot palettes, track colours, and visual styles with YAML.
 
@@ -53,6 +55,45 @@ python3 simple_bam_snap.py \
 
 Regions use 1-based inclusive coordinates. `--flank` adds context to both
 sides before rendering.
+
+## Output format and resolution
+
+PNG is the default. A supported extension in `--output_name` selects another
+format automatically:
+
+```bash
+# Scalable vector output for manuscripts and editing
+python3 simple_bam_snap.py \
+  --bam sample.bam \
+  --region chr9:101867492-101867612 \
+  --output_dir out \
+  --output_name locus.svg
+
+# High-resolution raster output
+python3 simple_bam_snap.py \
+  --bam sample.bam \
+  --region chr9:101867492-101867612 \
+  --output_dir out \
+  --output_name locus \
+  --output_format png \
+  --fig_width 16 \
+  --dpi 300
+```
+
+Use `--output_format` for `png`, `svg`, `svgz`, `pdf`, `jpg`, `jpeg`, `tif`,
+`tiff`, or `webp`. It takes precedence over a supported filename extension, so
+`--output_name locus.png --output_format svg` writes `locus.svg`. With no
+extension or format, `.png` is appended.
+
+For raster output, pixel width is `--fig_width × --dpi`; figure height adapts
+to the displayed tracks. SVG and PDF remain scalable, while `--dpi` controls
+any rasterized content embedded in a vector file. The same options apply to
+single-locus, mate-view, and two-BAM comparison figures. They can also be set
+under `preferences` in the YAML configuration, for example
+`output_format: pdf`, `fig_width: 16`, and `dpi: 300`.
+
+The repository includes a scalable example at
+[`out/25_vector_output.svg`](out/25_vector_output.svg).
 
 ## Chromosome overview
 
@@ -299,11 +340,11 @@ The available sections are:
 | `alignment_colors` | normal reads and discordant-pair categories; the small-insert colour also colours CIGAR insertions |
 | `base_colors` | A/C/G/T/N in reads, coverage, and the reference row |
 | `track_colors` | default BED, GFF/GTF, VCF, CNV, and BAF colours |
-| `visual_colors` | deletions, skips, soft clips, coverage, grid, center guide, text, legend, ideogram, centromere, and CNV gain/loss |
+| `visual_colors` | deletions, skips, soft clips, coverage, sashimi arcs, grid, center guide, text, legend, ideogram, centromere, and CNV gain/loss |
 | `haplotype_colors` | HP 1, HP 2, and untagged reads |
 | `cytoband_colors` | UCSC stain colours |
 | `chromosome_palette` | fallback hues for chromosomes and additional haplotypes |
-| `styles` | row/track heights, margins, opacity, principal line widths, and center-guide dash style |
+| `styles` | row/track heights, margins, opacity, principal line widths, center-guide dash style, and sashimi arc geometry |
 
 See [`config.example.yaml`](config.example.yaml) for the complete schema and
 built-in values. Setting `alignment_colors.interchrom: null` preserves stable
@@ -491,6 +532,38 @@ Tracks appear once above stacked BAM comparisons. Mate view fetches and draws
 the same track sources independently for the primary and inferred mate loci.
 `chr1`/`1` naming differences are resolved for indexed tracks when possible.
 
+## RNA-seq and sashimi plots
+
+Use `--sashimi` with a coordinate-sorted RNA-seq BAM to add a splice-junction
+track between coverage and alignments. Junctions are taken directly from
+CIGAR `N` operations and grouped by their exact donor and acceptor positions.
+Arc labels report the number of supporting alignments, and line width scales
+with support.
+
+```bash
+python3 simple_bam_snap.py \
+  --bam rnaseq.bam \
+  --region chr1:100000-110000 \
+  --sashimi \
+  --min_junction_reads 3 \
+  --sashimi_strand split \
+  --display_mode squish \
+  --output_name rnaseq-sashimi
+```
+
+`--sashimi_strand combined` draws all junctions above one baseline.
+`--sashimi_strand split` mirrors plus-strand junctions above the baseline and
+minus-strand junctions below it, using separate configurable colours.
+`--min_junction_reads` suppresses weak junctions. Counts always use the full
+filtered read cohort, so alignment downsampling and `--max_rows` do not alter
+the sashimi evidence.
+
+The example [`out/24_rnaseq_sashimi.png`](out/24_rnaseq_sashimi.png) uses
+[`out/demo_rna.bam`](out/demo_rna.bam) and demonstrates alternative donors,
+alternative acceptors, strand separation, coverage, and spliced alignments.
+The arc colours and geometry are configurable through the
+`visual_colors.sashimi_*` and `styles.sashimi_*` YAML keys.
+
 ## Display modes and high-depth regions
 
 Use `--display_mode` to control the visual density of every alignment panel:
@@ -597,6 +670,9 @@ Common options:
 | `--layout {pack,expand}` | compact packing or one read per ranked row |
 | `--view_as_pairs` | place visible primary mates on one row and connect them |
 | `--center_guide` | show a vertical guide through the midpoint of each locus |
+| `--sashimi` | add count-labelled CIGAR-N splice-junction arcs |
+| `--min_junction_reads N` | minimum support required to draw a junction |
+| `--sashimi_strand {combined,split}` | merge strands or mirror plus/minus arcs |
 | `--haplotype_view {none,color,split}` | retain ordinary colours, colour by HP, or split into labelled HP/PS lanes |
 | `--haplotype_filter HP [...]` | retain selected HP values; `untagged` includes reads without HP |
 | `--haplotype_tag TAG` | SAM haplotype tag; defaults to `HP` |

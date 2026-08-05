@@ -31,7 +31,7 @@ from src.layout import DISPLAY_MODES, HAPLOTYPE_VIEWS, SORT_KEYS
 from src.mate_window import MATE_WINDOW_SOURCES
 from src.read_model import ONLY_TYPES
 from src.render import DEFAULT_COVERAGE_VAF_THRESHOLD, DEFAULT_MAX_REFERENCE_SPAN
-from src.snapshot import BamSnapshot, compare_snapshots
+from src.snapshot import OUTPUT_FORMATS, BamSnapshot, compare_snapshots
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 log = logging.getLogger("simple_bam_snap")
@@ -81,7 +81,15 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--flank", type=int, default=0, help="Extra bp of context padded on each side of --region.")
 
     parser.add_argument("--output_dir", default=".", help="Output directory.")
-    parser.add_argument("--output_name", help="Output file name (.png appended if missing).")
+    parser.add_argument(
+        "--output_name",
+        help=("Output file name. A supported extension selects the format; otherwise "
+              ".png is appended by default."),
+    )
+    parser.add_argument(
+        "--output_format", choices=OUTPUT_FORMATS,
+        help="Output image format. Overrides a supported extension in --output_name.",
+    )
     parser.add_argument("--label1", help="Label for --bam in comparison mode (default: file stem).")
     parser.add_argument("--label2", help="Label for --bam2 in comparison mode (default: file stem).")
     parser.add_argument(
@@ -258,6 +266,19 @@ def build_parser() -> argparse.ArgumentParser:
               "Overrides --genome."),
     )
     parser.add_argument("--no_coverage", action="store_true", help="Hide the coverage track.")
+    rna_group = parser.add_argument_group("RNA-seq / sashimi")
+    rna_group.add_argument(
+        "--sashimi", action="store_true",
+        help="Draw count-labelled splice-junction arcs from CIGAR N operations.",
+    )
+    rna_group.add_argument(
+        "--min_junction_reads", type=int, default=1, metavar="N",
+        help="Minimum supporting alignments required to draw a splice junction.",
+    )
+    rna_group.add_argument(
+        "--sashimi_strand", choices=("combined", "split"), default="combined",
+        help="Combine strands above the baseline or mirror plus/minus junction arcs.",
+    )
     parser.add_argument(
         "--coverage_vaf_threshold", type=float, default=DEFAULT_COVERAGE_VAF_THRESHOLD,
         metavar="FRACTION",
@@ -279,7 +300,10 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--no_annotate", action="store_true", help="Hide the per-row gap-length annotation (expand layout).")
     parser.add_argument("--fig_width", type=float, default=14.0, help="Figure width in inches.")
-    parser.add_argument("--dpi", type=int, default=150, help="Output resolution.")
+    parser.add_argument(
+        "--dpi", type=int, default=150,
+        help="Raster output resolution in dots per inch (also applies to rasterized vector elements).",
+    )
 
     return parser
 
@@ -354,8 +378,17 @@ def main(argv=None) -> int:
     if args.max_alignment_depth < 0:
         log.error("--max_alignment_depth cannot be negative (use 0 to disable downsampling).")
         return 1
+    if args.min_junction_reads < 1:
+        log.error("--min_junction_reads must be at least one.")
+        return 1
     if args.max_reference_span < 0:
         log.error("--max_reference_span cannot be negative (use 0 to hide the reference track).")
+        return 1
+    if args.fig_width <= 0:
+        log.error("--fig_width must be greater than zero.")
+        return 1
+    if args.dpi <= 0:
+        log.error("--dpi must be greater than zero.")
         return 1
     sort_base_position = None
     if args.sort_base_position is not None:
@@ -424,6 +457,9 @@ def main(argv=None) -> int:
         cytoband_file=args.cytoband_file,
         max_reference_span=args.max_reference_span,
         show_coverage=not args.no_coverage,
+        show_sashimi=args.sashimi,
+        min_junction_reads=args.min_junction_reads,
+        sashimi_strand=args.sashimi_strand,
         coverage_vaf_threshold=args.coverage_vaf_threshold,
         min_baseq=args.min_baseq,
         min_variant_mapq=args.min_variant_mapq,
@@ -462,6 +498,7 @@ def main(argv=None) -> int:
             out_path, table = compare_snapshots(
                 bam1=args.bam, bam2=args.bam2, chrom=chrom, start=start, end=end,
                 fasta=args.fasta, output_dir=args.output_dir, output_name=args.output_name,
+                output_format=args.output_format,
                 label1=args.label1, label2=args.label2,
                 metrics_tsv_1=args.metrics_tsv, metrics_tsv_2=args.metrics_tsv2,
                 **common_kwargs,
@@ -476,6 +513,7 @@ def main(argv=None) -> int:
     snap = BamSnapshot(
         bam=args.bam, chrom=chrom, start=start, end=end, fasta=args.fasta,
         output_dir=args.output_dir, output_name=args.output_name,
+        output_format=args.output_format,
         label=args.label1, mate_view=args.mate_view,
         mate_window_source=args.mate_window_source,
         mate_window_size=args.mate_window_size,
@@ -486,7 +524,7 @@ def main(argv=None) -> int:
     except (OSError, ValueError) as exc:
         log.error(str(exc))
         return 1
-    log.info("Wrote snapshot: %s", snap.output_png)
+    log.info("Wrote snapshot: %s", snap.output_path)
     if snap.downsampled_reads:
         log.info(
             "Downsampled %d alignment(s) above the %dx display-depth cap; full coverage and metrics retained.",
