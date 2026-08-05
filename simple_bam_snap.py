@@ -18,14 +18,33 @@ import os
 import re
 import sys
 
-from src.layout import SORT_KEYS
+from src.annotations import (
+    ANNOTATION_DISPLAY_MODES,
+    PRIMARY_ISOFORM_MODES,
+    build_annotation_sources,
+    build_baf_sources,
+    build_custom_annotation_sources,
+)
+from src.config import load_config
+from src.downsample import DEFAULT_MAX_ALIGNMENT_DEPTH
+from src.layout import DISPLAY_MODES, HAPLOTYPE_VIEWS, SORT_KEYS
+from src.mate_window import MATE_WINDOW_SOURCES
 from src.read_model import ONLY_TYPES
+from src.render import DEFAULT_COVERAGE_VAF_THRESHOLD, DEFAULT_MAX_REFERENCE_SPAN
 from src.snapshot import BamSnapshot, compare_snapshots
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 log = logging.getLogger("simple_bam_snap")
 
 REGION_RE = re.compile(r"^(?P<chrom>[\w.\-]+):(?P<start>[\d,]+)-(?P<end>[\d,]+)$")
+PREFERENCE_ALIASES = {
+    "show_coverage": ("no_coverage", True),
+    "show_ideogram": ("no_ideogram", True),
+    "pair_colors": ("no_pair_colors", True),
+    "mapq_shading": ("no_mapq_shading", True),
+    "annotate_gap": ("no_annotate", True),
+    "include_supplementary": ("exclude_supplementary", True),
+}
 
 
 def parse_region(region: str, flank: int = 0):
@@ -51,9 +70,14 @@ def build_parser() -> argparse.ArgumentParser:
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
     parser.add_argument("--bam", required=True, help="Input BAM file (indexed).")
-    parser.add_argument("--bam2", help="Optional second BAM for a side-by-side comparison snapshot.")
+    parser.add_argument("--bam2", help="Optional second BAM for a stacked comparison snapshot.")
     parser.add_argument("--region", required=True, help="Region as chrom:start-end (1-based, inclusive).")
     parser.add_argument("--fasta", help="Reference FASTA (indexed or indexable). Enables mismatch/base coloring.")
+    parser.add_argument(
+        "--max_reference_span", type=int, default=DEFAULT_MAX_REFERENCE_SPAN, metavar="BP",
+        help=("Show the coloured FASTA reference-base track only for windows at or below "
+              "this span; set to 0 to hide the track while retaining mismatch detection."),
+    )
     parser.add_argument("--flank", type=int, default=0, help="Extra bp of context padded on each side of --region.")
 
     parser.add_argument("--output_dir", default=".", help="Output directory.")
@@ -61,10 +85,63 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--label1", help="Label for --bam in comparison mode (default: file stem).")
     parser.add_argument("--label2", help="Label for --bam2 in comparison mode (default: file stem).")
     parser.add_argument(
+        "--config", help=(
+            "YAML file defining default preferences, colours, and rendering styles. "
+            "Explicit command-line options override YAML preferences."
+        )
+    )
+    parser.add_argument(
         "--metrics_tsv", help="Write per-read computed metrics (gap length, mismatches, SA, ...) to this TSV path."
     )
     parser.add_argument(
         "--metrics_tsv2", help="TSV path for --bam2's per-read metrics (comparison mode only)."
+    )
+
+    track_group = parser.add_argument_group("genomic and quantitative tracks")
+    track_group.add_argument(
+        "--track", action="append", metavar="PATH",
+        help=("BED, GFF/GFF3, GTF, VCF, SEG, bedGraph, or log2/CNV track; "
+              "repeat for multiple tracks. "
+              "Compressed tracks require a .tbi or .csi tabix index."),
+    )
+    track_group.add_argument(
+        "--track_label", action="append", metavar="LABEL",
+        help="Optional label for the corresponding --track, supplied in the same order.",
+    )
+    track_group.add_argument(
+        "--custom_track", action="append", nargs="+", metavar="VALUE",
+        help=("Define a custom annotation track as FILE TYPE NAME COLOR [DISPLAY]; "
+              "repeat as needed. TYPE is bed, gff, gff3, gtf, vcf, seg, "
+              "bedgraph, log2, cnv, or auto. "
+              "COLOR accepts quoted hex, R,G,B, or rgb(R,G,B). "
+              "DISPLAY optionally overrides --track_display with collapse, pack, or expand. "
+              "BGZF files require .tbi/.csi and are fetched by genomic region with tabix."),
+    )
+    track_group.add_argument(
+        "--track_display", choices=ANNOTATION_DISPLAY_MODES, default="pack",
+        help=("Default annotation layout: collapse merges transcript isoforms by gene; "
+              "pack shares rows between non-overlapping models; expand uses one row "
+              "per transcript."),
+    )
+    track_group.add_argument(
+        "--primary_isoforms", choices=PRIMARY_ISOFORM_MODES, default="all",
+        help=("Gene-transcript selection: all keeps every isoform; prefer uses the "
+              "best annotated primary tier per gene but retains all isoforms when no "
+              "marker exists; only removes genes without a primary marker."),
+    )
+    track_group.add_argument(
+        "--baf_vcf", action="append", metavar="VCF",
+        help=("Add a BAF/LOH track from heterozygous biallelic SNVs in a genotype VCF; "
+              "repeat for multiple tracks. Compressed VCF/BCF files require an index."),
+    )
+    track_group.add_argument(
+        "--baf_sample", action="append", metavar="SAMPLE",
+        help=("VCF sample for the corresponding --baf_vcf; defaults to the first sample "
+              "and is supplied in the same order."),
+    )
+    track_group.add_argument(
+        "--baf_track_label", action="append", metavar="LABEL",
+        help="Optional label for the corresponding --baf_vcf, supplied in the same order.",
     )
 
     parser.add_argument(
@@ -73,14 +150,55 @@ def build_parser() -> argparse.ArgumentParser:
              "(use this to rank alignments by gap length).",
     )
     parser.add_argument(
+        "--display_mode", choices=DISPLAY_MODES, default="expand",
+        help=("Alignment track appearance: collapse overlays all reads in one row; "
+              "expand uses normal-height rows; squish uses compact rows."),
+    )
+    parser.add_argument(
+        "--view_as_pairs", action="store_true",
+        help=("Place visible primary mates on the same row and link them across "
+              "their genomic gap, like IGV's View as pairs option."),
+    )
+    haplotype_group = parser.add_argument_group("haplotype-aware alignments")
+    haplotype_group.add_argument(
+        "--haplotype_view", choices=HAPLOTYPE_VIEWS, default="none",
+        help=("Haplotype display: none keeps ordinary colours; color colours reads by HP; "
+              "split also separates HP values into labelled lanes."),
+    )
+    haplotype_group.add_argument(
+        "--haplotype_filter", nargs="+", metavar="HP",
+        help=("Keep selected HP values, such as 1 2; use 'untagged' to retain reads "
+              "without the haplotype tag."),
+    )
+    haplotype_group.add_argument(
+        "--haplotype_tag", default="HP", metavar="TAG",
+        help="Two-character SAM tag containing the read haplotype.",
+    )
+    haplotype_group.add_argument(
+        "--phase_set_tag", default="PS", metavar="TAG",
+        help="Two-character SAM tag containing the phase-set identifier.",
+    )
+    parser.add_argument(
         "--sort_by", choices=sorted(SORT_KEYS), default="gap_length",
-        help="Sort/priority key. gap_length = max(CIGAR indel length, SA-implied split gap).",
+        help=("Sort/priority key. gap_length = max(CIGAR indel length, SA-implied "
+              "split gap); base groups reads by their nucleotide at "
+              "--sort_base_position and prioritises non-reference alleles."),
+    )
+    parser.add_argument(
+        "--sort_base_position", type=int, metavar="POS",
+        help=("1-based genomic position used by --sort_by base. Defaults to the "
+              "middle base of the requested window."),
     )
     parser.add_argument(
         "--sort_order", choices=["desc", "asc"], default="desc",
         help="desc puts the largest gap_length (or chosen key) first/top.",
     )
     parser.add_argument("--max_rows", type=int, help="Cap the number of rows drawn (kept rows are highest priority).")
+    parser.add_argument(
+        "--max_alignment_depth", type=int, default=DEFAULT_MAX_ALIGNMENT_DEPTH,
+        help=("Downsample alignment spans above this overlapping depth. Coverage, summaries, and TSVs "
+              "still use all reads; set to 0 to disable."),
+    )
     parser.add_argument("--long_gap_threshold", type=int, default=10,
                          help="bp threshold for the 'long gap' count in the summary stats.")
 
@@ -102,13 +220,63 @@ def build_parser() -> argparse.ArgumentParser:
                               "reads) is flagged small_insert/large_insert (discordant).")
 
     parser.add_argument("--no_pair_colors", action="store_true",
-                         help="Disable IGV-style discordant-pair coloring; fall back to plain forward/reverse strand fill.")
+                         help="Disable IGV-style discordant-pair coloring; use the normal alignment fill for every read.")
     parser.add_argument("--no_mapq_shading", action="store_true",
                          help="Disable lightening read fill color for lower MAPQ.")
     parser.add_argument("--mapq_cap", type=int, default=60,
                          help="MAPQ at which a read's fill reaches full opacity under MAPQ shading.")
 
+    mate_group = parser.add_argument_group("mate view")
+    mate_group.add_argument(
+        "--mate_view", action="store_true",
+        help="Draw the requested region and an automatically selected mate locus as two adjacent panels."
+    )
+    mate_group.add_argument(
+        "--mate_window_source", choices=MATE_WINDOW_SOURCES, default="discordant",
+        help=("Evidence used to select the mate locus: mapped mates of discordant reads; "
+              "SA entries from split reads; or mapped mates of soft-clipped reads."),
+    )
+    mate_group.add_argument(
+        "--mate_window_size", type=int,
+        help="Mate-panel span in bp (default: the final --region span, including --flank).",
+    )
+
+    parser.add_argument("--no_ideogram", action="store_true",
+                        help="Hide the chromosome overview and red current-window marker.")
+    parser.add_argument(
+        "--center_guide", action="store_true",
+        help="Show a vertical guide through the center of each genomic panel.",
+    )
+    parser.add_argument(
+        "--genome", choices=["auto", "hg19", "hg38", "none"], default="auto",
+        help=("Cytoband assembly for the ideogram. auto selects bundled UCSC hg19/hg38 "
+              "only from exact BAM contig-length matches; none uses a plain chromosome bar."),
+    )
+    parser.add_argument(
+        "--cytoband_file",
+        help=("Custom UCSC five-column cytoBand text file, optionally gzip-compressed. "
+              "Overrides --genome."),
+    )
     parser.add_argument("--no_coverage", action="store_true", help="Hide the coverage track.")
+    parser.add_argument(
+        "--coverage_vaf_threshold", type=float, default=DEFAULT_COVERAGE_VAF_THRESHOLD,
+        metavar="FRACTION",
+        help=("Colour SNV allele counts in the coverage track when their observed allele "
+              "fraction is greater than this value; requires --fasta."),
+    )
+    parser.add_argument(
+        "--min_baseq", type=int, default=0, metavar="Q",
+        help="Minimum base quality used for coverage-track SNV depth and evidence.",
+    )
+    parser.add_argument(
+        "--min_variant_mapq", type=int, default=0, metavar="Q",
+        help="Minimum read MAPQ used for coverage-track SNV depth and evidence.",
+    )
+    parser.add_argument(
+        "--show_variant_counts", action="store_true",
+        help=("Label qualifying coverage SNVs with ALT/depth, VAF, strand counts, "
+              "mean base quality, and mean MAPQ when base spacing permits."),
+    )
     parser.add_argument("--no_annotate", action="store_true", help="Hide the per-row gap-length annotation (expand layout).")
     parser.add_argument("--fig_width", type=float, default=14.0, help="Figure width in inches.")
     parser.add_argument("--dpi", type=int, default=150, help="Output resolution.")
@@ -116,12 +284,124 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def apply_config_preferences(parser: argparse.ArgumentParser, preferences: dict) -> None:
+    """Validate YAML preferences against argparse and install them as defaults."""
+    actions = {
+        action.dest: action for action in parser._actions
+        if action.dest not in ("help", "config")
+    }
+    unknown = sorted(set(preferences) - set(actions) - set(PREFERENCE_ALIASES))
+    if unknown:
+        raise ValueError(f"Unknown preference key(s): {', '.join(unknown)}.")
+    validated = {}
+    for key, value in preferences.items():
+        destination, invert = PREFERENCE_ALIASES.get(key, (key, False))
+        if destination in validated:
+            raise ValueError(
+                f"Preference {key} duplicates another setting for {destination}."
+            )
+        action = actions[destination]
+        if action.nargs == 0:
+            if not isinstance(value, bool):
+                raise ValueError(f"Preference {key} must be true or false.")
+            validated[destination] = not value if invert else value
+            continue
+        values = value if isinstance(value, list) else [value]
+        converted = []
+        for item in values:
+            try:
+                parsed = action.type(item) if action.type else item
+            except (TypeError, ValueError) as exc:
+                raise ValueError(f"Invalid value for preference {key}: {item!r}.") from exc
+            if action.choices is not None and parsed not in action.choices:
+                choices = ", ".join(str(choice) for choice in action.choices)
+                raise ValueError(
+                    f"Invalid value for preference {key}: {parsed!r}; choose from {choices}."
+                )
+            converted.append(parsed)
+        expects_list = action.nargs in ("+", "*") or isinstance(value, list)
+        validated[destination] = converted if expects_list else converted[0]
+    parser.set_defaults(**validated)
+
+
 def main(argv=None) -> int:
-    args = build_parser().parse_args(argv)
+    command_args = list(argv) if argv is not None else sys.argv[1:]
+    config_parser = argparse.ArgumentParser(add_help=False)
+    config_parser.add_argument("--config")
+    preliminary, remaining = config_parser.parse_known_args(command_args)
+    del remaining
+    try:
+        visual_config = load_config(preliminary.config)
+        parser = build_parser()
+        apply_config_preferences(parser, visual_config["preferences"])
+    except ValueError as exc:
+        log.error(str(exc))
+        return 1
+    args = parser.parse_args(command_args)
 
     try:
         chrom, start, end = parse_region(args.region, flank=args.flank)
     except ValueError as exc:
+        log.error(str(exc))
+        return 1
+
+    if args.mate_view and args.bam2:
+        log.error("--mate_view cannot be combined with --bam2 comparison mode.")
+        return 1
+    if args.mate_window_size is not None and args.mate_window_size <= 0:
+        log.error("--mate_window_size must be greater than zero.")
+        return 1
+    if args.max_alignment_depth < 0:
+        log.error("--max_alignment_depth cannot be negative (use 0 to disable downsampling).")
+        return 1
+    if args.max_reference_span < 0:
+        log.error("--max_reference_span cannot be negative (use 0 to hide the reference track).")
+        return 1
+    sort_base_position = None
+    if args.sort_base_position is not None:
+        if args.sort_base_position < 1:
+            log.error("--sort_base_position must be a positive 1-based coordinate.")
+            return 1
+        if args.sort_by != "base":
+            log.error("--sort_base_position requires --sort_by base.")
+            return 1
+        sort_base_position = args.sort_base_position - 1
+        if not start <= sort_base_position < end:
+            log.error("--sort_base_position must fall inside the requested region.")
+            return 1
+    if not 0 <= args.coverage_vaf_threshold <= 1:
+        log.error("--coverage_vaf_threshold must be between 0 and 1.")
+        return 1
+    if args.min_baseq < 0 or args.min_variant_mapq < 0:
+        log.error("--min_baseq and --min_variant_mapq cannot be negative.")
+        return 1
+    for option, tag in (("--haplotype_tag", args.haplotype_tag), ("--phase_set_tag", args.phase_set_tag)):
+        if not re.fullmatch(r"[A-Za-z][A-Za-z0-9]", tag):
+            log.error("%s must be a two-character SAM tag.", option)
+            return 1
+
+    haplotype_filter = []
+    for value in args.haplotype_filter or []:
+        haplotype_filter.append("untagged" if value.lower() == "untagged" else value)
+
+    alignment_colors = visual_config["alignment_colors"]
+
+    try:
+        annotation_sources = build_annotation_sources(
+            args.track, args.track_label, display_mode=args.track_display,
+            primary_isoforms=args.primary_isoforms,
+            track_colors=visual_config["track_colors"],
+        )
+        annotation_sources.extend(build_custom_annotation_sources(
+            args.custom_track, default_display_mode=args.track_display,
+            primary_isoforms=args.primary_isoforms,
+            track_colors=visual_config["track_colors"],
+        ))
+        annotation_sources.extend(build_baf_sources(
+            args.baf_vcf, labels=args.baf_track_label, samples=args.baf_sample,
+            track_colors=visual_config["track_colors"],
+        ))
+    except (OSError, ValueError) as exc:
         log.error(str(exc))
         return 1
 
@@ -138,13 +418,28 @@ def main(argv=None) -> int:
         include_supplementary=not args.exclude_supplementary,
         include_duplicates=args.include_duplicates,
         max_rows=args.max_rows,
+        show_ideogram=not args.no_ideogram,
+        show_center_guide=args.center_guide,
+        genome=args.genome,
+        cytoband_file=args.cytoband_file,
+        max_reference_span=args.max_reference_span,
         show_coverage=not args.no_coverage,
+        coverage_vaf_threshold=args.coverage_vaf_threshold,
+        min_baseq=args.min_baseq,
+        min_variant_mapq=args.min_variant_mapq,
+        show_variant_counts=args.show_variant_counts,
+        haplotype_view=args.haplotype_view,
+        haplotype_filter=haplotype_filter,
+        haplotype_tag=args.haplotype_tag,
+        phase_set_tag=args.phase_set_tag,
         annotate_gap=not args.no_annotate,
         fig_width=args.fig_width,
         dpi=args.dpi,
         long_gap_threshold=args.long_gap_threshold,
         layout=args.layout,
+        display_mode=args.display_mode,
         sort_by=args.sort_by,
+        sort_base_position=sort_base_position,
         descending=(args.sort_order == "desc"),
         only_types=args.only,
         min_softclip=args.min_softclip,
@@ -152,19 +447,28 @@ def main(argv=None) -> int:
         pair_colors=not args.no_pair_colors,
         shade_by_mapq=not args.no_mapq_shading,
         mapq_cap=args.mapq_cap,
+        alignment_colors=alignment_colors,
+        visual_config=visual_config,
+        max_alignment_depth=args.max_alignment_depth,
+        annotation_sources=annotation_sources,
+        view_as_pairs=args.view_as_pairs,
     )
 
     if args.bam2:
         if not os.path.isfile(args.bam2):
             log.error("Cannot find --bam2 file: %s", args.bam2)
             return 1
-        out_path, table = compare_snapshots(
-            bam1=args.bam, bam2=args.bam2, chrom=chrom, start=start, end=end,
-            fasta=args.fasta, output_dir=args.output_dir, output_name=args.output_name,
-            label1=args.label1, label2=args.label2,
-            metrics_tsv_1=args.metrics_tsv, metrics_tsv_2=args.metrics_tsv2,
-            **common_kwargs,
-        )
+        try:
+            out_path, table = compare_snapshots(
+                bam1=args.bam, bam2=args.bam2, chrom=chrom, start=start, end=end,
+                fasta=args.fasta, output_dir=args.output_dir, output_name=args.output_name,
+                label1=args.label1, label2=args.label2,
+                metrics_tsv_1=args.metrics_tsv, metrics_tsv_2=args.metrics_tsv2,
+                **common_kwargs,
+            )
+        except (OSError, ValueError) as exc:
+            log.error(str(exc))
+            return 1
         log.info("Wrote comparison snapshot: %s", out_path)
         print(table)
         return 0
@@ -172,10 +476,28 @@ def main(argv=None) -> int:
     snap = BamSnapshot(
         bam=args.bam, chrom=chrom, start=start, end=end, fasta=args.fasta,
         output_dir=args.output_dir, output_name=args.output_name,
-        label=args.label1, **common_kwargs,
+        label=args.label1, mate_view=args.mate_view,
+        mate_window_source=args.mate_window_source,
+        mate_window_size=args.mate_window_size,
+        **common_kwargs,
     )
-    summary = snap.snap(metrics_tsv=args.metrics_tsv)
+    try:
+        summary = snap.snap(metrics_tsv=args.metrics_tsv)
+    except (OSError, ValueError) as exc:
+        log.error(str(exc))
+        return 1
     log.info("Wrote snapshot: %s", snap.output_png)
+    if snap.downsampled_reads:
+        log.info(
+            "Downsampled %d alignment(s) above the %dx display-depth cap; full coverage and metrics retained.",
+            snap.downsampled_reads, args.max_alignment_depth,
+        )
+    if snap.mate_window:
+        mate = snap.mate_window
+        log.info(
+            "Selected mate window from %d %s candidate(s): %s:%d-%d",
+            mate.candidate_count, mate.source, mate.chrom, mate.start + 1, mate.end,
+        )
     print(
         f"{summary.n_reads} reads | gapped: {summary.n_gapped} ({summary.pct_gapped:.1f}%) | "
         f"max gap: {summary.max_gap}bp | split (SA): {summary.n_with_sa} | "

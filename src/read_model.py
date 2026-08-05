@@ -27,10 +27,10 @@ import pysam
 
 from src.reference import ReferenceWindow
 
-_CIGAR_OPS = {0: "M", 1: "I", 2: "D", 3: "N", 4: "S", 5: "H", 6: "P", 7: "=", 8: "X"}
-_REF_CONSUMING = ("M", "D", "N", "=", "X")
-_QUERY_CONSUMING = ("M", "I", "S", "=", "X")
-_SA_FIELD_RE = re.compile(r"(\d+)([MIDNSHP=X])")
+CIGAR_OPS = {0: "M", 1: "I", 2: "D", 3: "N", 4: "S", 5: "H", 6: "P", 7: "=", 8: "X"}
+REF_CONSUMING = ("M", "D", "N", "=", "X")
+QUERY_CONSUMING = ("M", "I", "S", "=", "X")
+SA_FIELD_PATTERN = re.compile(r"(\d+)([MIDNSHP=X])")
 
 
 @dataclass
@@ -57,22 +57,22 @@ def iter_cigar_blocks(cigartuples, ref_start: int):
     ref_pos = ref_start
     query_pos = 0
     for op_code, length in cigartuples:
-        op = _CIGAR_OPS[op_code]
+        op = CIGAR_OPS[op_code]
         yield CigarBlock(op=op, ref_pos=ref_pos, query_pos=query_pos, length=length)
-        if op in _REF_CONSUMING:
+        if op in REF_CONSUMING:
             ref_pos += length
-        if op in _QUERY_CONSUMING:
+        if op in QUERY_CONSUMING:
             query_pos += length
 
 
 def cigar_reference_length(cigar_str: str) -> int:
     """Reference span implied by a CIGAR string (e.g. an SA tag's CIGAR field)."""
     return sum(
-        int(num) for num, op in _SA_FIELD_RE.findall(cigar_str) if op in _REF_CONSUMING
+        int(num) for num, op in SA_FIELD_PATTERN.findall(cigar_str) if op in REF_CONSUMING
     )
 
 
-def _parse_sa_tag(raw: str) -> List[SAEntry]:
+def parse_sa_tag(raw: str) -> List[SAEntry]:
     entries = []
     for record in raw.strip().split(";"):
         if not record:
@@ -169,7 +169,10 @@ def closest_same_chrom_gap(
     duplication rather than a deletion) report a gap of 0 rather than a
     negative number.
     """
-    same_chrom = [e for e in sa_entries if e.rname == rname]
+    same_chrom = []
+    for entry in sa_entries:
+        if entry.rname == rname:
+            same_chrom.append(entry)
     has_cross_chrom = len(same_chrom) < len(sa_entries)
     if not same_chrom:
         return 0, has_cross_chrom
@@ -191,12 +194,17 @@ class AlignedRead:
     """A single alignment record plus every feature the layout/render/metrics
     layers need, computed once up front."""
 
-    def __init__(self, segment: pysam.AlignedSegment, reference: Optional[ReferenceWindow] = None):
+    def __init__(
+        self, segment: pysam.AlignedSegment,
+        reference: Optional[ReferenceWindow] = None,
+        haplotype_tag: str = "HP", phase_set_tag: str = "PS",
+    ):
         self.segment = segment
         seg = segment
 
         self.query_name = seg.query_name
         self.query_sequence = seg.query_sequence
+        self.query_qualities = list(seg.query_qualities or [])
         self.ref_start = seg.reference_start
         self.ref_end = seg.reference_end if seg.reference_end is not None else seg.reference_start
         self.reference_name = seg.reference_name
@@ -207,9 +215,12 @@ class AlignedRead:
         self.is_secondary = seg.is_secondary
         self.is_supplementary = seg.is_supplementary
         self.is_paired = seg.is_paired
+        self.mate_is_unmapped = bool(seg.is_paired and seg.mate_is_unmapped)
         self.is_proper_pair = bool(seg.is_paired and seg.is_proper_pair)
         self.insert_size = abs(seg.template_length) if seg.is_paired else 0
         self.flag = seg.flag
+        self.haplotype = str(seg.get_tag(haplotype_tag)) if seg.has_tag(haplotype_tag) else None
+        self.phase_set = str(seg.get_tag(phase_set_tag)) if seg.has_tag(phase_set_tag) else None
 
         # --- pair orientation / discordance (see compute_pair_orientation) ---
         has_mapped_mate = seg.is_paired and not seg.mate_is_unmapped
@@ -239,6 +250,7 @@ class AlignedRead:
         self.hard_clip_left = 0
         self.hard_clip_right = 0
         self.mismatches: List[Tuple[int, str]] = []
+        self.mismatch_details: List[Tuple[int, str, int]] = []
 
         cigartuples = seg.cigartuples
         if cigartuples:
@@ -270,14 +282,21 @@ class AlignedRead:
                         rbase = reference.base_at(rpos)
                         if rbase and rbase != "N" and qbase != rbase:
                             self.mismatches.append((rpos, qbase))
+                            base_quality = (
+                                self.query_qualities[blk.query_pos + offset]
+                                if blk.query_pos + offset < len(self.query_qualities) else 0
+                            )
+                            self.mismatch_details.append((rpos, qbase, base_quality))
 
-        self.cigar_gap_len = sum(l for _, l, is_skip in self.deletions if not is_skip) + sum(
-            l for _, l in self.insertions
+        self.cigar_gap_len = sum(
+            deletion[1] for deletion in self.deletions if not deletion[2]
+        ) + sum(
+            insertion[1] for insertion in self.insertions
         )
         self.soft_clip_total = self.soft_clip_left + self.soft_clip_right
         self.mismatch_count = len(self.mismatches)
 
-        self.sa_entries = _parse_sa_tag(seg.get_tag("SA")) if seg.has_tag("SA") else []
+        self.sa_entries = parse_sa_tag(seg.get_tag("SA")) if seg.has_tag("SA") else []
         self.sa_count = len(self.sa_entries)
         self.sa_gap_len, self.has_cross_chrom_sa = closest_same_chrom_gap(
             self.ref_start, self.ref_end, self.reference_name, self.sa_entries
@@ -288,6 +307,24 @@ class AlignedRead:
     @property
     def is_discordant(self) -> bool:
         return self.pair_category != "normal"
+
+    def base_at(self, ref_position: int) -> Optional[str]:
+        """Return the aligned base, deletion, skip, or no-call at a locus."""
+        sequence = self.query_sequence or ""
+        for block in self.blocks:
+            block_end = block.ref_pos + block.length
+            if not block.ref_pos <= ref_position < block_end:
+                continue
+            if block.op in ("M", "=", "X"):
+                query_index = block.query_pos + ref_position - block.ref_pos
+                if query_index < len(sequence):
+                    return sequence[query_index].upper()
+                return "N"
+            if block.op == "D":
+                return "-"
+            if block.op == "N":
+                return "~"
+        return None
 
     def gap_label(self) -> str:
         """Short human-readable summary of the dominant gap signal, for annotating rows."""
@@ -337,6 +374,9 @@ def fetch_reads(
     insert_size_sigma: float = 3.0,
     only_types: Optional[List[str]] = None,
     min_softclip: int = 1,
+    haplotype_tag: str = "HP",
+    phase_set_tag: str = "PS",
+    haplotype_filter: Optional[List[str]] = None,
 ) -> List[AlignedRead]:
     """Fetch + filter + featurize every alignment overlapping [start, end).
 
@@ -358,10 +398,22 @@ def fetch_reads(
                 continue
             if segment.mapping_quality < min_mapq:
                 continue
-            reads.append(AlignedRead(segment, reference))
+            read = AlignedRead(
+                segment, reference,
+                haplotype_tag=haplotype_tag, phase_set_tag=phase_set_tag,
+            )
+            if haplotype_filter:
+                haplotype_value = read.haplotype if read.haplotype is not None else "untagged"
+                if haplotype_value not in haplotype_filter:
+                    continue
+            reads.append(read)
 
     classify_insert_sizes(reads, sigma=insert_size_sigma)
 
     if only_types:
-        reads = [r for r in reads if matches_only(r, only_types, min_softclip)]
+        matching_reads = []
+        for read in reads:
+            if matches_only(read, only_types, min_softclip):
+                matching_reads.append(read)
+        reads = matching_reads
     return reads

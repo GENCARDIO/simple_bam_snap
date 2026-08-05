@@ -62,8 +62,9 @@ def test_closest_same_chrom_gap_adjacent_deletion():
 
 def test_closest_same_chrom_gap_overlap_is_zero():
     sa = [SAEntry(rname="chr1", start=150, end=250, strand="+", cigar="100M", mapq=60, nm=0)]
-    gap, _ = closest_same_chrom_gap(100, 180, "chr1", sa)
+    gap, cross = closest_same_chrom_gap(100, 180, "chr1", sa)
     assert gap == 0
+    assert cross is False
 
 
 def test_closest_same_chrom_gap_cross_chrom_flagged_not_counted():
@@ -78,8 +79,9 @@ def test_closest_same_chrom_gap_picks_nearest_of_several():
         SAEntry(rname="chr1", start=500, end=550, strand="+", cigar="50M", mapq=60, nm=0),
         SAEntry(rname="chr1", start=190, end=230, strand="+", cigar="40M", mapq=60, nm=0),
     ]
-    gap, _ = closest_same_chrom_gap(100, 180, "chr1", sa)
+    gap, cross = closest_same_chrom_gap(100, 180, "chr1", sa)
     assert gap == 10  # nearest partner (190-180), not the far one
+    assert cross is False
 
 
 def test_fetch_reads_finds_the_known_9bp_deletion():
@@ -111,6 +113,17 @@ def test_mismatch_detection_against_fake_reference():
     read = AlignedRead(segment, ref)
     assert read.mismatch_count == 1
     assert read.mismatches[0] == (segment.reference_start, seq[0].upper())
+    assert read.mismatch_details[0][:2] == (segment.reference_start, seq[0].upper())
+    assert read.mismatch_details[0][2] == segment.query_qualities[0]
+    assert read.base_at(segment.reference_start) == seq[0].upper()
+    assert read.base_at(segment.reference_start - 1) is None
+
+
+def test_base_at_reports_deletions():
+    reads = fetch_reads(TEST_BAM, "chr9", 101867490, 101867600)
+    deletion_read = next(read for read in reads if read.deletions)
+    deletion_start = deletion_read.deletions[0][0]
+    assert deletion_read.base_at(deletion_start) == "-"
 
 
 def test_no_reference_means_no_mismatch_computation():

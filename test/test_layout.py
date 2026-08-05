@@ -4,7 +4,11 @@ from dataclasses import dataclass
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from src.layout import build_rows, expand_rows, pack_rows, truncate_rows
+import pytest
+
+from src.layout import (
+    build_rows, expand_rows, infer_reference_base, pack_rows, truncate_rows,
+)
 
 
 @dataclass
@@ -21,6 +25,18 @@ class FakeRead:
     insert_size: int = 0
     strand: str = "+"
     query_name: str = "r"
+    is_paired: bool = False
+    is_secondary: bool = False
+    is_supplementary: bool = False
+    mate_is_unmapped: bool = False
+    mate_chrom: str = "chr1"
+    reference_name: str = "chr1"
+    haplotype: str = None
+    phase_set: str = None
+    bases: dict = None
+
+    def base_at(self, position):
+        return (self.bases or {}).get(position)
 
 
 def test_pack_rows_never_overlaps_within_a_row():
@@ -60,10 +76,106 @@ def test_expand_rows_ties_broken_by_position():
     assert [row[0].query_name for row in rows] == ["early", "late"]
 
 
+def test_base_sort_prioritises_non_reference_alleles_then_reference_and_gaps():
+    reads = [
+        FakeRead(0, 20, query_name="reference", bases={9: "G"}),
+        FakeRead(0, 20, query_name="alt-a", bases={9: "A"}, mapq=50),
+        FakeRead(0, 20, query_name="alt-t", bases={9: "T"}, mapq=60),
+        FakeRead(0, 20, query_name="deletion", bases={9: "-"}),
+        FakeRead(20, 30, query_name="uncovered"),
+    ]
+
+    rows = expand_rows(
+        reads, sort_by="base", descending=True,
+        base_position=9, reference_base="G",
+    )
+    names = []
+    for row in rows:
+        names.append(row[0].query_name)
+
+    assert names == ["alt-t", "alt-a", "reference", "deletion", "uncovered"]
+
+
+def test_base_sort_requires_a_position():
+    with pytest.raises(ValueError, match="requires a genomic base position"):
+        expand_rows([FakeRead(0, 10)], sort_by="base", descending=True)
+
+
+def test_reference_base_can_be_inferred_from_observed_consensus():
+    reads = [
+        FakeRead(0, 20, bases={9: "C"}),
+        FakeRead(0, 20, bases={9: "C"}),
+        FakeRead(0, 20, bases={9: "A"}),
+        FakeRead(20, 30),
+    ]
+    assert infer_reference_base(reads, 9) == "C"
+
+
 def test_build_rows_dispatches_on_layout():
     reads = [FakeRead(0, 10, query_name="a"), FakeRead(20, 30, query_name="b")]
     assert len(build_rows(reads, layout="expand", sort_by="start", descending=False)) == 2
     assert len(build_rows(reads, layout="pack", sort_by="start", descending=False)) == 1
+
+
+def test_view_as_pairs_keeps_mates_together_as_one_layout_unit():
+    reads = [
+        FakeRead(0, 10, query_name="pair", is_paired=True),
+        FakeRead(90, 100, query_name="pair", is_paired=True),
+        FakeRead(40, 50, query_name="between"),
+    ]
+    expanded = build_rows(
+        reads, layout="expand", sort_by="start", descending=False,
+        view_as_pairs=True,
+    )
+    assert [read.query_name for read in expanded[0]] == ["pair", "pair"]
+    assert [read.query_name for read in expanded[1]] == ["between"]
+
+    packed = build_rows(
+        reads, layout="pack", sort_by="start", descending=False,
+        view_as_pairs=True, padding=0,
+    )
+    assert len(packed) == 2
+    assert [read.query_name for read in packed[0]] == ["pair", "pair"]
+
+
+def test_collapse_display_mode_overlays_every_alignment_in_one_row():
+    reads = [FakeRead(0, 10, query_name="a"), FakeRead(5, 15, query_name="b")]
+    rows = build_rows(
+        reads, layout="expand", sort_by="start", descending=False,
+        display_mode="collapse",
+    )
+    assert len(rows) == 1
+    assert [read.query_name for read in rows[0]] == ["a", "b"]
+
+
+def test_unknown_display_mode_is_rejected():
+    with pytest.raises(ValueError, match="Unknown display mode"):
+        build_rows([], layout="pack", sort_by="start", descending=False, display_mode="tiny")
+
+
+def test_split_haplotype_view_groups_and_orders_hp_lanes_even_when_collapsed():
+    reads = [
+        FakeRead(20, 30, query_name="hp2", haplotype="2", phase_set="200"),
+        FakeRead(40, 50, query_name="untagged"),
+        FakeRead(0, 10, query_name="hp1", haplotype="1", phase_set="100"),
+    ]
+
+    rows = build_rows(
+        reads, layout="pack", sort_by="start", descending=False,
+        display_mode="collapse", haplotype_view="split",
+    )
+
+    assert [[read.query_name for read in row] for row in rows] == [
+        ["hp1"], ["hp2"], ["untagged"],
+    ]
+
+
+def test_unknown_haplotype_view_is_rejected():
+    with pytest.raises(ValueError, match="Unknown haplotype view"):
+        build_rows(
+            [], layout="pack", sort_by="start", descending=False,
+            haplotype_view="rainbow",
+        )
 
 
 def test_truncate_rows_keeps_highest_priority_rows():

@@ -9,6 +9,7 @@ from src.read_model import (
     AlignedRead,
     classify_insert_sizes,
     compute_pair_orientation,
+    fetch_reads,
     matches_only,
 )
 
@@ -108,6 +109,46 @@ def test_pair_category_on_aligned_read():
     unpaired = AlignedRead(make_segment("e", "chr1", 100, False, paired=False))
     assert unpaired.pair_category == "normal"
     assert not unpaired.is_discordant
+
+
+def test_aligned_read_extracts_standard_and_custom_haplotype_tags():
+    standard_segment = make_segment("hp", "chr1", 100, False, paired=False)
+    standard_segment.set_tag("HP", 1)
+    standard_segment.set_tag("PS", 10123)
+    standard = AlignedRead(standard_segment)
+    assert standard.haplotype == "1"
+    assert standard.phase_set == "10123"
+
+    custom_segment = make_segment("custom", "chr1", 200, False, paired=False)
+    custom_segment.set_tag("HT", "maternal")
+    custom_segment.set_tag("PT", "block-a")
+    custom = AlignedRead(custom_segment, haplotype_tag="HT", phase_set_tag="PT")
+    assert custom.haplotype == "maternal"
+    assert custom.phase_set == "block-a"
+
+
+def test_fetch_reads_filters_selected_haplotypes_and_untagged(tmp_path):
+    bam_path = tmp_path / "haplotypes.bam"
+    segments = []
+    for index, haplotype in enumerate(("1", "2", None)):
+        segment = make_segment(
+            f"read-{haplotype or 'none'}", "chr1", 100 + index * 100,
+            False, paired=False,
+        )
+        if haplotype:
+            segment.set_tag("HP", int(haplotype))
+        segments.append(segment)
+    with pysam.AlignmentFile(str(bam_path), "wb", header=HEADER) as bam:
+        for segment in segments:
+            bam.write(segment)
+    pysam.index(str(bam_path))
+
+    selected = fetch_reads(
+        str(bam_path), "chr1", 0, 1000,
+        haplotype_filter=["2", "untagged"],
+    )
+
+    assert [read.query_name for read in selected] == ["read-2", "read-none"]
 
 
 def test_classify_insert_sizes_flags_outliers_not_the_cluster():

@@ -24,9 +24,9 @@ class ReferenceWindow:
         self.sequence: Optional[str] = None
 
         if fasta_path:
-            self.sequence = self._load(fasta_path)
+            self.sequence = self.load_sequence(fasta_path)
 
-    def _load(self, fasta_path: str) -> str:
+    def load_sequence(self, fasta_path: str) -> str:
         if not os.path.isfile(fasta_path):
             raise FileNotFoundError(f"Reference FASTA not found: {fasta_path}")
         try:
@@ -37,13 +37,13 @@ class ReferenceWindow:
             fasta = pysam.FastaFile(fasta_path)
 
         try:
-            contig = self._resolve_contig(fasta, self.chrom)
+            contig = self.resolve_contig(fasta, self.chrom)
             return fasta.fetch(contig, max(0, self.start), self.end).upper()
         finally:
             fasta.close()
 
     @staticmethod
-    def _resolve_contig(fasta: "pysam.FastaFile", chrom: str) -> str:
+    def resolve_contig(fasta: "pysam.FastaFile", chrom: str) -> str:
         """Tolerate chr1 vs 1 naming mismatches between BAM and FASTA."""
         names = set(fasta.references)
         if chrom in names:

@@ -1,0 +1,35 @@
+preferences:
+  display_mode: squish
+  max_rows: 45
+  track_display: collapse
+
+alignment_colors:
+  normal: "#b9a7d8"
+  large_insert: "#ff6f00"
+  small_insert: "#00a6a6"
+  ff: "#70a1ff"
+  rr: "#3157a4"
+  everted: "#7cb342"
+  interchrom: "#c2185b"
+
+track_colors:
+  bed: "#111111"
+  gene: "#3157a4"
+  vcf: "#8e3b76"
+
+visual_colors:
+  coverage: "#8d829f"
+  gridline: "#e8e1ee"
+  ideogram_window: "#c2185b"
+  legend_background: "#f4f0f7"
+
+haplotype_colors:
+  "1": "#3157a4"
+  "2": "#ff6f00"
+  untagged: "#8d829f"
+
+styles:
+  squish_row_height_in: 0.085
+  coverage_alpha: 0.70
+  alignment_alpha: 0.88
+  grid_line_width: 0.45

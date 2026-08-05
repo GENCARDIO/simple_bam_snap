@@ -1,0 +1,139 @@
+# Every key is optional. Explicit CLI arguments override values in preferences.
+preferences:
+  flank: 0
+  layout: pack
+  display_mode: expand
+  track_display: pack
+  primary_isoforms: all
+  sort_by: gap_length
+  # Used when sort_by is base; omit it to sort at the window midpoint.
+  # sort_base_position: 101867542
+  sort_order: desc
+  max_alignment_depth: 100
+  long_gap_threshold: 10
+  min_mapq: 0
+  include_secondary: false
+  include_supplementary: true
+  include_duplicates: false
+  min_softclip: 1
+  insert_size_sigma: 3.0
+  pair_colors: true
+  mapq_shading: true
+  mapq_cap: 60
+  max_reference_span: 250
+  show_ideogram: true
+  genome: auto
+  show_coverage: true
+  coverage_vaf_threshold: 0.20
+  min_baseq: 0
+  min_variant_mapq: 0
+  show_variant_counts: false
+  haplotype_view: none
+  haplotype_tag: HP
+  phase_set_tag: PS
+  view_as_pairs: false
+  center_guide: false
+  mate_view: false
+  mate_window_source: discordant
+  annotate_gap: true
+  fig_width: 14.0
+  dpi: 150
+
+alignment_colors:
+  normal: "#b0b0b0"
+  large_insert: "#e34948"
+  # The small-insert colour is also used for CIGAR insertion markers.
+  small_insert: "#4a3aa7"
+  ff: "#9ec5f4"
+  rr: "#5598e7"
+  everted: "#008300"
+  # null preserves stable chromosome-specific mate hues.
+  interchrom: null
+
+base_colors:
+  A: "#008300"
+  C: "#2a78d6"
+  G: "#eb6834"
+  T: "#e34948"
+  N: "#898781"
+
+track_colors:
+  bed: "#000000"
+  gene: "#17217a"
+  vcf: "#7a1f5c"
+  cnv: "#555555"
+  baf: "#7a1f5c"
+
+visual_colors:
+  deletion: "#0b0b0b"
+  reference_skip: "#898781"
+  softclip: "#1baf7a"
+  coverage: "#a3a3a3"
+  gridline: "#e1e0d9"
+  axis: "#898781"
+  primary_text: "#0b0b0b"
+  secondary_text: "#52514e"
+  legend_edge: "#cfcec8"
+  legend_background: "#f5f5f2"
+  contrast_edge: "#ffffff"
+  label_background: "#ffffff"
+  cytoband_edge: "#9a9a9a"
+  ideogram: "#c4c4c4"
+  ideogram_window: "#d62728"
+  centromere: "#b84b4b"
+  center_guide: "#52514e"
+  cnv_gain: "#d73027"
+  cnv_loss: "#2878b5"
+
+haplotype_colors:
+  "1": "#3b6fb6"
+  "2": "#e6862d"
+  untagged: "#9b9b96"
+
+cytoband_colors:
+  gneg: "#ffffff"
+  gpos25: "#c8c8c8"
+  gpos50: "#969696"
+  gpos75: "#646464"
+  gpos100: "#1f1f1f"
+  gvar: "#dddddd"
+  stalk: "#b8d8d8"
+  acen: "#d95f5f"
+
+chromosome_palette:
+  - "#2a78d6"
+  - "#eb6834"
+  - "#1baf7a"
+  - "#eda100"
+  - "#e87ba4"
+  - "#008300"
+  - "#4a3aa7"
+  - "#e34948"
+
+styles:
+  row_height_in: 0.22
+  squish_row_height_in: 0.10
+  row_margin: 0.12
+  squish_row_margin: 0.22
+  annotation_row_height_in: 0.30
+  cnv_track_height_in: 1.15
+  baf_track_height_in: 1.05
+  ideogram_height_in: 0.34
+  panel_header_height_in: 0.30
+  reference_height_in: 0.38
+  alignment_alpha: 0.90
+  secondary_alignment_alpha: 0.50
+  mapq_alpha_floor: 0.15
+  coverage_alpha: 0.85
+  reference_base_alpha: 0.20
+  cnv_fill_alpha: 0.28
+  baf_alpha: 0.90
+  haplotype_lane_alpha: 0.055
+  alignment_edge_width: 0.30
+  pair_link_width: 0.85
+  grid_line_width: 0.60
+  gene_line_width: 0.55
+  primary_gene_line_width: 0.85
+  center_guide_alpha: 0.65
+  center_guide_width: 0.80
+  center_guide_line_style: "--"

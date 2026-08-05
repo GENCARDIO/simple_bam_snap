@@ -1,0 +1,12 @@
+chr9	demo	transcript	101867481	101867620	.	-	.	gene_id "DEMO1"; transcript_id "DEMO1-201"; gene_name "DEMO1";
+chr9	demo	exon	101867481	101867515	.	-	.	gene_id "DEMO1"; transcript_id "DEMO1-201"; gene_name "DEMO1";
+chr9	demo	transcript	101867500	101867608	.	+	.	gene_id "DEMO2"; transcript_id "DEMO2-201"; gene_name "DEMO2";
+chr9	demo	exon	101867500	101867530	.	+	.	gene_id "DEMO2"; transcript_id "DEMO2-201"; gene_name "DEMO2";
+chr9	demo	CDS	101867501	101867515	.	-	0	gene_id "DEMO1"; transcript_id "DEMO1-201"; gene_name "DEMO1";
+chr9	demo	CDS	101867512	101867530	.	+	0	gene_id "DEMO2"; transcript_id "DEMO2-201"; gene_name "DEMO2";
+chr9	demo	exon	101867536	101867570	.	-	.	gene_id "DEMO1"; transcript_id "DEMO1-201"; gene_name "DEMO1";
+chr9	demo	CDS	101867536	101867570	.	-	0	gene_id "DEMO1"; transcript_id "DEMO1-201"; gene_name "DEMO1";
+chr9	demo	exon	101867565	101867608	.	+	.	gene_id "DEMO2"; transcript_id "DEMO2-201"; gene_name "DEMO2";
+chr9	demo	CDS	101867565	101867595	.	+	0	gene_id "DEMO2"; transcript_id "DEMO2-201"; gene_name "DEMO2";
+chr9	demo	exon	101867591	101867620	.	-	.	gene_id "DEMO1"; transcript_id "DEMO1-201"; gene_name "DEMO1";
+chr9	demo	CDS	101867591	101867605	.	-	0	gene_id "DEMO1"; transcript_id "DEMO1-201"; gene_name "DEMO1";

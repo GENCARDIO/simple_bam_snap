@@ -29,6 +29,8 @@ TSV_FIELDS = [
     "insert_size",
     "pair_orientation",
     "pair_category",
+    "haplotype",
+    "phase_set",
     "mate_chrom",
     "is_secondary",
     "is_supplementary",
@@ -55,6 +57,8 @@ def read_to_row(read: AlignedRead) -> dict:
         "insert_size": read.insert_size,
         "pair_orientation": read.pair_orientation,
         "pair_category": read.pair_category,
+        "haplotype": read.haplotype,
+        "phase_set": read.phase_set,
         "mate_chrom": read.mate_chrom,
         "is_secondary": read.is_secondary,
         "is_supplementary": read.is_supplementary,
@@ -104,27 +108,42 @@ def summarize(
     reads: List[AlignedRead], label: str = "", long_gap_threshold: int = 10, min_softclip: int = 1
 ) -> RegionSummary:
     n_reads = len(reads)
-    gapped = [r for r in reads if r.gap_length > 0]
-    long_gapped = [r for r in reads if r.gap_length >= long_gap_threshold]
-    with_sa = [r for r in reads if r.sa_count > 0]
-    cross_chrom = [r for r in reads if r.has_cross_chrom_sa]
-    discordant = [r for r in reads if r.is_discordant]
-    interchrom = [r for r in reads if r.pair_category == "interchrom"]
-    softclipped = [r for r in reads if r.soft_clip_total >= min_softclip]
+    gapped = []
+    n_long_gapped = 0
+    n_with_sa = 0
+    n_cross_chrom = 0
+    n_discordant = 0
+    n_interchrom = 0
+    n_softclipped = 0
+    for read in reads:
+        if read.gap_length > 0:
+            gapped.append(read)
+        if read.gap_length >= long_gap_threshold:
+            n_long_gapped += 1
+        if read.sa_count > 0:
+            n_with_sa += 1
+        if read.has_cross_chrom_sa:
+            n_cross_chrom += 1
+        if read.is_discordant:
+            n_discordant += 1
+        if read.pair_category == "interchrom":
+            n_interchrom += 1
+        if read.soft_clip_total >= min_softclip:
+            n_softclipped += 1
     return RegionSummary(
         label=label,
         n_reads=n_reads,
         n_gapped=len(gapped),
-        n_long_gap=len(long_gapped),
+        n_long_gap=n_long_gapped,
         long_gap_threshold=long_gap_threshold,
         max_gap=max((r.gap_length for r in reads), default=0),
         mean_gap_of_gapped=mean((r.gap_length for r in gapped)) if gapped else 0.0,
         total_gap_bp=sum(r.gap_length for r in reads),
-        n_with_sa=len(with_sa),
-        n_cross_chrom_sa=len(cross_chrom),
-        n_discordant=len(discordant),
-        n_interchrom=len(interchrom),
-        n_softclipped=len(softclipped),
+        n_with_sa=n_with_sa,
+        n_cross_chrom_sa=n_cross_chrom,
+        n_discordant=n_discordant,
+        n_interchrom=n_interchrom,
+        n_softclipped=n_softclipped,
         mean_mapq=mean((r.mapq for r in reads)) if reads else 0.0,
     )
 
@@ -149,15 +168,22 @@ def format_summary_table(summaries: List[RegionSummary]) -> str:
         ("mean MAPQ", "{s.mean_mapq:.1f}"),
     ]
 
-    labels = [s.label or f"bam{i+1}" for i, s in enumerate(summaries)]
-    col_width = max([len("metric")] + [len(l) for l in labels]) + 2
-    metric_width = max(len(name) for name, _ in rows) + 2
+    labels = []
+    label_widths = [len("metric")]
+    for index, summary in enumerate(summaries):
+        label = summary.label or f"bam{index + 1}"
+        labels.append(label)
+        label_widths.append(len(label))
+    col_width = max(label_widths) + 2
+    metric_width = max(len(row[0]) for row in rows) + 2
 
     lines = []
     header = "metric".ljust(metric_width) + "".join(l.ljust(col_width) for l in labels)
     lines.append(header)
     lines.append("-" * len(header))
     for name, fmt in rows:
-        cells = [fmt.format(s=s) for s in summaries]
+        cells = []
+        for summary in summaries:
+            cells.append(fmt.format(s=summary))
         lines.append(name.ljust(metric_width) + "".join(c.ljust(col_width) for c in cells))
     return "\n".join(lines)

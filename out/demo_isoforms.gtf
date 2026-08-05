@@ -1,0 +1,18 @@
+chr9	demo	transcript	101867481	101867555	.	-	.	gene_id "DEMO1"; transcript_id "DEMO1-201"; gene_name "DEMO1"; transcript_name "DEMO1-201";
+chr9	demo	exon	101867481	101867500	.	-	.	gene_id "DEMO1"; transcript_id "DEMO1-201"; gene_name "DEMO1"; transcript_name "DEMO1-201";
+chr9	demo	exon	101867510	101867525	.	-	.	gene_id "DEMO1"; transcript_id "DEMO1-201"; gene_name "DEMO1"; transcript_name "DEMO1-201";
+chr9	demo	exon	101867540	101867555	.	-	.	gene_id "DEMO1"; transcript_id "DEMO1-201"; gene_name "DEMO1"; transcript_name "DEMO1-201";
+chr9	demo	transcript	101867481	101867550	.	-	.	gene_id "DEMO1"; transcript_id "DEMO1-202"; gene_name "DEMO1"; transcript_name "DEMO1-202"; tag "MANE_Select";
+chr9	demo	exon	101867481	101867505	.	-	.	gene_id "DEMO1"; transcript_id "DEMO1-202"; gene_name "DEMO1"; transcript_name "DEMO1-202";
+chr9	demo	exon	101867520	101867530	.	-	.	gene_id "DEMO1"; transcript_id "DEMO1-202"; gene_name "DEMO1"; transcript_name "DEMO1-202";
+chr9	demo	exon	101867540	101867550	.	-	.	gene_id "DEMO1"; transcript_id "DEMO1-202"; gene_name "DEMO1"; transcript_name "DEMO1-202";
+chr9	demo	transcript	101867490	101867555	.	-	.	gene_id "DEMO1"; transcript_id "DEMO1-203"; gene_name "DEMO1"; transcript_name "DEMO1-203";
+chr9	demo	exon	101867490	101867510	.	-	.	gene_id "DEMO1"; transcript_id "DEMO1-203"; gene_name "DEMO1"; transcript_name "DEMO1-203";
+chr9	demo	exon	101867525	101867540	.	-	.	gene_id "DEMO1"; transcript_id "DEMO1-203"; gene_name "DEMO1"; transcript_name "DEMO1-203";
+chr9	demo	exon	101867548	101867555	.	-	.	gene_id "DEMO1"; transcript_id "DEMO1-203"; gene_name "DEMO1"; transcript_name "DEMO1-203";
+chr9	demo	transcript	101867565	101867620	.	+	.	gene_id "DEMO2"; transcript_id "DEMO2-201"; gene_name "DEMO2"; transcript_name "DEMO2-201";
+chr9	demo	exon	101867565	101867580	.	+	.	gene_id "DEMO2"; transcript_id "DEMO2-201"; gene_name "DEMO2"; transcript_name "DEMO2-201";
+chr9	demo	exon	101867595	101867620	.	+	.	gene_id "DEMO2"; transcript_id "DEMO2-201"; gene_name "DEMO2"; transcript_name "DEMO2-201";
+chr9	demo	transcript	101867570	101867615	.	+	.	gene_id "DEMO2"; transcript_id "DEMO2-202"; gene_name "DEMO2"; transcript_name "DEMO2-202";
+chr9	demo	exon	101867570	101867590	.	+	.	gene_id "DEMO2"; transcript_id "DEMO2-202"; gene_name "DEMO2"; transcript_name "DEMO2-202";
+chr9	demo	exon	101867600	101867615	.	+	.	gene_id "DEMO2"; transcript_id "DEMO2-202"; gene_name "DEMO2"; transcript_name "DEMO2-202";
