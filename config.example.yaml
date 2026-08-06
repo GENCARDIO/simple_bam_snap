@@ -162,8 +162,8 @@ styles:
   gene_line_width: 0.55
   primary_gene_line_width: 0.85
   # Every visible intron gets at least one strand-direction arrow.
-  gene_arrow_size: 2.20
-  gene_arrow_spacing_px: 13.0
+  gene_arrow_size: 2.70
+  gene_arrow_spacing_px: 24.0
   peak_summit_width: 0.85
   center_guide_alpha: 0.65
   center_guide_width: 0.80

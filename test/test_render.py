@@ -583,6 +583,29 @@ def test_every_gene_intron_has_strand_orientation_arrow(strand, marker):
     plt.close(fig)
 
 
+def test_gene_orientation_arrows_use_readable_default_spacing_and_size():
+    renderer = AlignmentRenderer()
+    item = AnnotationItem(
+        100, 200, "TX1", "+", blocks=[(100, 110), (190, 200)]
+    )
+    track = LoadedAnnotationTrack("Genes", "gtf", "#17217a", [item], [[item]])
+    fig, ax = plt.subplots(figsize=(8, 1), dpi=100)
+    ax.set_xlim(100, 200)
+
+    renderer.draw_annotation_track(ax, track, 100, 200)
+
+    arrows = []
+    for line in ax.lines:
+        if line.get_marker() == ">":
+            arrows.append(line)
+    expected_maximum = int(ax.get_window_extent().width / 20)
+    assert 1 < len(arrows) <= expected_maximum
+    assert all(
+        line.get_markersize() == pytest.approx(2.7) for line in arrows
+    )
+    plt.close(fig)
+
+
 def test_primary_isoform_label_has_visible_marker():
     renderer = AlignmentRenderer()
     item = AnnotationItem(
