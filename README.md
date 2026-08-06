@@ -13,17 +13,19 @@ It is especially useful for reviewing structural-variant evidence:
 - optionally draw an IGV-like vertical guide through the center of each locus;
 - collapse, expand, or squish alignment tracks for the required visual density;
 - automatically downsample alignment tracks above 100× depth;
+- adaptively bin coverage for wide windows instead of creating one artist per base;
 - colour SNV allele fractions above 20% within the coverage track;
 - show the current window in red on a chromosome-length overview;
 - highlight discordant pair orientation and insert-size categories;
 - place visible mates on one row and link them with IGV-style pair connectors;
 - colour, split, and filter alignments by haplotype and phase-set tags;
 - show a primary locus beside an automatically selected mate locus;
-- add indexed or plain BED, GFF, GTF, VCF, SEG, and log2/bedGraph tracks;
+- add indexed or plain BED, GFF, GTF, VCF, peak, signal, SEG, and log2/bedGraph tracks;
+- auto-download and load indexed NCBI RefSeq isoforms for hg19/GRCh37 or hg38/GRCh38;
 - summarize RNA-seq splice junctions as count-labelled sashimi arcs;
 - select annotated primary gene isoforms with safe per-gene fallback;
 - combine copy-number tracks with genotype-derived BAF/LOH views;
-- compare two BAMs over the same locus;
+- stack any number of BAMs with matched per-sample VCF companion tracks;
 - export PNG, SVG, SVGZ, PDF, JPEG, TIFF, or WebP images at a chosen resolution;
 - export the computed per-read metrics to TSV;
 - configure behaviour, all plot palettes, track colours, and visual styles with YAML.
@@ -88,7 +90,7 @@ extension or format, `.png` is appended.
 For raster output, pixel width is `--fig_width × --dpi`; figure height adapts
 to the displayed tracks. SVG and PDF remain scalable, while `--dpi` controls
 any rasterized content embedded in a vector file. The same options apply to
-single-locus, mate-view, and two-BAM comparison figures. They can also be set
+single-locus, mate-view, and multi-BAM comparison figures. They can also be set
 under `preferences` in the YAML configuration, for example
 `output_format: pdf`, `fig_width: 16`, and `dpi: 300`.
 
@@ -122,13 +124,44 @@ python3 simple_bam_snap.py \
 `--cytoband_file` overrides `--genome`. If auto-detection cannot identify an
 assembly, the tool retains the neutral chromosome outline. `--genome none`
 also requests that neutral outline, while `--no_ideogram` hides the entire
-track. Mate view draws one ideogram for each locus; comparison mode shares one
-because both BAMs use the same window.
+track. Mate view draws one ideogram for each locus; multi-BAM mode shares one
+because every sample panel uses the same window.
 
 The bundled files are the UCSC
 [hg19](https://hgdownload.soe.ucsc.edu/goldenPath/hg19/database/cytoBand.txt.gz)
 and [hg38](https://hgdownload.soe.ucsc.edu/goldenPath/hg38/database/cytoBand.txt.gz)
 database tables.
+
+## Default NCBI RefSeq isoforms
+
+For human BAMs, an NCBI RefSeq gene track is enabled by default. `--refseq
+auto` identifies hg19/GRCh37 or hg38/GRCh38 from exact BAM chromosome lengths,
+downloads the corresponding official NCBI GFF once, translates RefSeq sequence
+accessions to UCSC-style chromosome aliases, coordinate-sorts it with bounded
+memory, and creates a BGZF file with a tabix index. Later snapshots fetch only
+the requested interval.
+
+The default cache is `data/ucsc/refseq/`. Override it with `--refseq_dir DIR`
+or the equivalent YAML preference, which is useful for a shared installation.
+The current assembly is downloaded automatically on first use; pre-populate
+both supported assemblies with:
+
+```bash
+python3 download_refseq.py
+```
+
+Use `--refseq hg19`, `--refseq grch37`, `--refseq hg38`, or `--refseq grch38`
+to select explicitly. Use `--refseq none` to disable the default gene track.
+The track follows `--track_display` and `--primary_isoforms`, including NCBI's
+`RefSeq Select` marker, and can coexist with user-supplied gene annotations.
+
+The fixed upstream releases are NCBI Annotation Release 105.20220307 for
+[GRCh37.p13](https://ftp.ncbi.nlm.nih.gov/genomes/all/annotation_releases/9606/105.20220307/GCF_000001405.25_GRCh37.p13/GCF_000001405.25_GRCh37.p13_genomic.gff.gz)
+and Annotation Release 110 for
+[GRCh38.p14](https://ftp.ncbi.nlm.nih.gov/genomes/all/annotation_releases/9606/110/GCF_000001405.40_GRCh38.p14/GCF_000001405.40_GRCh38.p14_genomic.gff.gz).
+The default result is demonstrated in
+[`out/30_default_refseq_isoforms.png`](out/30_default_refseq_isoforms.png); no
+explicit `--track` argument was used.
 
 ## Reference bases
 
@@ -181,6 +214,22 @@ and deletions keep their existing alignment-track markers. Set
 `--coverage_vaf_threshold 1` to suppress all SNV colouring without hiding
 coverage.
 
+Coverage rendering adapts to the physical output width. When every base can
+be represented, the track retains exact one-base bars. Wider windows are
+reduced to at most roughly one bin per horizontal pixel, with each bin showing
+mean depth and the bin width reported in the track label. The binned track is
+one step-filled artist rather than one Matplotlib rectangle per genomic base.
+Wide-window SNV denominators are also stored only at positions with variant
+evidence, preventing a second window-sized depth allocation.
+
+The default `styles.coverage_bins_per_pixel: 1.0` can be adjusted in YAML.
+Higher values retain more coverage detail at additional rendering cost; lower
+values produce coarser, lighter output. This setting does not change BAM
+filters, coverage evidence, or small-window per-base behavior.
+
+Example: [`out/28_adaptive_coverage.png`](out/28_adaptive_coverage.png) renders
+a 163,196 bp window using 100 bp mean-depth bins.
+
 ## View alignments as pairs
 
 Use `--view_as_pairs` to place two visible primary mates on the same row and
@@ -225,8 +274,8 @@ shown explicitly in grey. Split-lane labels include a single PS identifier or
 the number of phase sets represented in that lane.
 
 Haplotype colour takes precedence over discordant-pair body colour while this
-view is active, and the legend replaces **Pair evidence** with a **Haplotype**
-compartment. Insertions, deletions, mismatches, soft clips, mate links, MAPQ
+view is active, and the legend replaces the pair-specific cards with a
+**Haplotype** compartment. Insertions, deletions, mismatches, soft clips, mate links, MAPQ
 shading, and variant evidence remain visible.
 
 Filter the BAM-derived alignments and coverage to selected values with:
@@ -283,7 +332,7 @@ When `--only` is active, the exact supporting read names are retained in the
 mate panel even if the mate-side cohort would classify them differently.
 
 Mate view currently accepts one BAM and therefore cannot be combined with
-`--bam2`.
+repeated `--bam` inputs or legacy `--bam2`.
 
 ## YAML configuration
 
@@ -312,10 +361,17 @@ track_colors:
   bed: "#000000"
   gene: "#17217a"
   vcf: "#7a1f5c"
+  peak: "#7b3294"
+  signal: "#2c7fb8"
 
 styles:
-  row_height_in: 0.24
-  annotation_row_height_in: 0.32
+  row_height_in: 0.06
+  squish_row_height_in: 0.015
+  annotation_row_height_in: 0.30
+  coverage_track_height_in: 1.40
+  peak_track_height_in: 1.05
+  peak_fill_alpha: 0.55
+  density_fill_alpha: 0.45
   alignment_alpha: 0.90
 ```
 
@@ -339,7 +395,7 @@ The available sections are:
 | `preferences` | CLI defaults such as layouts, filters, downsampling, mate/haplotype views, isoform selection, figure size, and DPI |
 | `alignment_colors` | normal reads and discordant-pair categories; the small-insert colour also colours CIGAR insertions |
 | `base_colors` | A/C/G/T/N in reads, coverage, and the reference row |
-| `track_colors` | default BED, GFF/GTF, VCF, CNV, and BAF colours |
+| `track_colors` | default BED, GFF/GTF, VCF, peak, epigenomic signal, CNV, and BAF colours |
 | `visual_colors` | deletions, skips, soft clips, coverage, sashimi arcs, grid, center guide, text, legend, ideogram, centromere, and CNV gain/loss |
 | `haplotype_colors` | HP 1, HP 2, and untagged reads |
 | `cytoband_colors` | UCSC stain colours |
@@ -357,11 +413,57 @@ provided for `show_coverage`, `show_ideogram`, `pair_colors`, `mapq_shading`,
 `annotate_gap`, and `include_supplementary`, avoiding double-negative settings
 such as `no_coverage: false`.
 
+### Track heights
+
+Every plotted track has a physical-height control under YAML `styles`:
+
+| Track | YAML style |
+|---|---|
+| Alignments | `row_height_in` or `squish_row_height_in`, multiplied by displayed rows |
+| BED/GFF/GTF/VCF | `annotation_row_height_in`, multiplied by annotation rows |
+| Coverage | `coverage_track_height_in` |
+| Copy number | `cnv_track_height_in` |
+| BAF/LOH | `baf_track_height_in` |
+| Peaks, signal, and density | `peak_track_height_in` |
+| Sashimi | `sashimi_track_height_in` |
+| Reference sequence | `reference_height_in` |
+| Chromosome ideogram | `ideogram_height_in` |
+| Multi-sample header | `panel_header_height_in` |
+
+Values are inches, so their pixel height is the value multiplied by `--dpi`.
+An optional `HEIGHT_IN` in `--custom_track` takes precedence over its type's
+YAML default, allowing two tracks of the same type to use different heights.
+
+Gene models place repeated orientation arrows on every visible intronic line:
+rightward for `+` transcripts and leftward for `-` transcripts. Even a short or
+window-clipped intron retains one centered arrow. Their appearance is controlled
+by `styles.gene_arrow_size` and `styles.gene_arrow_spacing_px`.
+
+Genomic axes never use scientific notation or Matplotlib offset text. Tick
+values are expressed in bp, kb, Mb, or Gb according to the displayed window
+length, with the unit shown once in the axis label and sufficient precision to
+distinguish adjacent coordinates. For example, a 140 bp window retains full
+base-pair coordinates even when it lies at position 101 Mb on its chromosome.
+
+```bash
+python3 simple_bam_snap.py \
+  --bam test/test.bam \
+  --region chr9:101867481-101867620 \
+  --config out/demo_track_heights.yaml \
+  --custom_track 'out/demo_regions.bed,bed,Regions,#000000,collapse,0.28' \
+  --custom_track 'out/demo_genes.gtf,gtf,Genes,#17217a,pack,0.70' \
+  --custom_track 'out/demo_variants.vcf,vcf,Variants,#7a1f5c,collapse,0.22' \
+  --output_dir out \
+  --output_name 29_custom_track_heights
+```
+
+The result is [`out/29_custom_track_heights.png`](out/29_custom_track_heights.png).
+
 ## Genomic and quantitative tracks
 
-Add BED, GFF/GFF3, GTF, VCF, SEG, bedGraph, or log2/CNV data with repeatable
-`--track` arguments. Labels are optional and correspond to tracks in the same
-order:
+Add BED, GFF/GFF3, GTF, VCF, narrowPeak/broadPeak, positive signal, SEG,
+bedGraph, or log2/CNV data with repeatable `--track` arguments. Labels are
+optional and correspond to tracks in the same order:
 
 ```bash
 python3 simple_bam_snap.py \
@@ -375,12 +477,13 @@ python3 simple_bam_snap.py \
 ```
 
 Gene tracks support three independent layouts through
-`--track_display {collapse,pack,expand}`:
+`--track_display {collapse,pack,expand,density}`:
 
 - `collapse` merges transcript isoforms into gene-level exon/UTR models;
 - `pack` preserves transcripts and shares rows between non-overlapping models;
 - `expand` gives every transcript its own row and displays its transcript name
-  or ID.
+  or ID;
+- `density` draws a compact binned histogram of overlapping features.
 
 Primary-transcript selection is independent of that layout:
 
@@ -390,11 +493,11 @@ Primary-transcript selection is independent of that layout:
 | `prefer` | choose the best annotated primary tier per gene; retain all isoforms for genes without a marker |
 | `only` | retain marked primary isoforms and remove genes without any recognized marker |
 
-Detection covers common GFF3/GTF representations of MANE Select, Ensembl
-canonical, APPRIS principal, `transcript_is_canonical`, and generic
+Detection covers common GFF3/GTF representations of MANE Select, RefSeq
+Select, Ensembl canonical, APPRIS principal, `transcript_is_canonical`, and generic
 canonical/primary-transcript flags. If several marker types occur for one
-gene, the priority is MANE Select, Ensembl canonical, APPRIS principal, then a
-generic primary flag. All transcripts tied at the best available tier are
+gene, the priority is MANE Select, RefSeq Select/Ensembl canonical, APPRIS
+principal, then a generic primary flag. All transcripts tied at the best available tier are
 retained. Selection happens before `collapse`, so a collapsed gene model is
 built only from its selected isoform where a primary annotation exists.
 
@@ -412,9 +515,11 @@ Example: [`out/20_primary_isoform_selection.png`](out/20_primary_isoform_selecti
 
 The selected mode is the default for all annotation tracks. For a
 self-contained track definition, repeat
-`--custom_track FILE TYPE NAME COLOR [DISPLAY]`; the optional fifth value
-overrides the default for that track. `TYPE` may be `bed`, `gff`, `gff3`, `gtf`,
-`vcf`, `seg`, `bedgraph`, `log2`, `cnv`, or `auto`; an explicit type also
+`--custom_track 'FILE,TYPE,NAME,COLOR[,DISPLAY[,HEIGHT_IN]]'`; the optional
+fifth CSV field overrides the layout and the optional sixth field sets that
+track's physical height in inches. `TYPE` may be `bed`, `gff`, `gff3`, `gtf`,
+`vcf`, `narrowpeak`, `broadpeak`, `peak`, `signal`, `seg`, `bedgraph`, `log2`,
+`cnv`, or `auto`; an explicit type also
 permits a non-standard file extension. Colours accept quoted hex, `R,G,B`, or
 `rgb(R,G,B)` values:
 
@@ -423,15 +528,58 @@ python3 simple_bam_snap.py \
   --bam sample.bam \
   --region chr9:101867492-101867612 \
   --track_display pack \
-  --custom_track variants.data bed "Candidate variants" "#000000" collapse \
-  --custom_track genes.gtf.gz gtf "GENCODE genes" "rgb(23,33,122)" expand \
+  --custom_track 'variants.data,bed,Candidate variants,#000000,collapse' \
+  --custom_track 'genes.gtf.gz,gtf,GENCODE genes,rgb(23,33,122),expand,0.85' \
   --output_name custom-tracks
 ```
 
-Quote hex colours because an unquoted `#` starts a shell comment. Custom-track
-definitions can be combined with the shorter `--track`/`--track_label`
-interface. Track order follows the ordinary tracks first and then custom
-tracks, each in command-line order.
+Quote the complete specification as shown: this preserves spaces and prevents
+`#` in hex colours from starting a shell comment. CSV fields containing commas
+can use CSV quotes inside the shell quotes, for example
+`'regions.bed,bed,"Candidate, somatic regions",#000000,pack'`. The former
+whitespace-separated form remains accepted for existing commands. Custom-track
+definitions can be combined with the shorter `--track`/`--track_label` interface.
+Track order follows ordinary tracks first and then custom tracks, each in
+command-line order.
+
+### ChIP-seq, histone-mark, and chromatin-accessibility tracks
+
+ENCODE-style `.narrowPeak` and `.broadPeak` files can be supplied directly.
+This covers ChIP-seq marks such as H3K27ac/H3K27me3 and accessibility assays
+such as DNase-seq or ATAC-seq:
+
+```bash
+python3 simple_bam_snap.py \
+  --bam sample.bam \
+  --region chr1:100000-140000 \
+  --track H3K27ac.narrowPeak.gz \
+  --track_label H3K27ac \
+  --custom_track 'H3K27me3.broadPeak,broadpeak,H3K27me3,#d95f02,collapse' \
+  --custom_track 'DNase.narrowPeak.gz,narrowpeak,DNase,#2166ac,density' \
+  --output_name chromatin-context
+```
+
+Peak height uses ENCODE `signalValue`, falling back to the BED score when the
+signal is missing. NarrowPeak summits are marked within each filled peak;
+broadPeak intervals omit the summit marker. Files with `.narrowPeak`,
+`.broadPeak`, or `.peak` suffixes are detected automatically. Arbitrary
+extensions can use the explicit `narrowpeak`, `broadpeak`, or `peak` type.
+
+The `density` display bins interval overlap across the visible window and
+plots the number of features per bin. It is useful when thousands of peaks
+would otherwise overplot, and is available per custom track or globally with
+`--track_display density`. Density uses screen-aware binning capped at 400
+bins, keeping large windows compact.
+
+For four-column `chrom start end value` epigenomic signal data, use the
+explicit `signal` type or a `.signal` filename. Signal values are drawn upward
+from zero and must be non-negative. Existing `bedgraph` and `log2` types remain
+signed, zero-centered CNV tracks, avoiding ambiguity between assay signal and
+copy-number ratios.
+
+Example: [`out/26_chipseq_peaks_density.png`](out/26_chipseq_peaks_density.png)
+combines H3K27ac narrow peaks and summits, broad H3K27me3 signal, and an
+indexed DNase peak-density track.
 
 Plain-text tracks are scanned directly. Files ending in `.gz`, `.bgz`, or
 `.bgzf` must be block-gzipped and have a tabix `.tbi` or `.csi` index next to
@@ -455,6 +603,9 @@ tabix -S 1 -s 2 -b 3 -e 4 tumour.seg.gz
 
 bgzip bins.bedgraph
 tabix -p bed bins.bedgraph.gz
+
+bgzip H3K27ac.narrowPeak
+tabix -p bed H3K27ac.narrowPeak.gz
 ```
 
 BED3/6 intervals are drawn as black rectangles by default. BED12 records use
@@ -491,7 +642,7 @@ python3 simple_bam_snap.py \
   --region chr9:101000000-102000000 \
   --track tumour.seg \
   --track_label "Tumour copy number" \
-  --custom_track normal.log2 bedgraph "Normal log2" "#555555" \
+  --custom_track 'normal.log2,bedgraph,Normal log2,#555555,collapse' \
   --output_name copy-number
 ```
 
@@ -571,13 +722,26 @@ Use `--display_mode` to control the visual density of every alignment panel:
 | Mode | Behaviour |
 |---|---|
 | `collapse` | overlay all displayed alignments in one row |
-| `expand` (default) | draw normal-height rows |
-| `squish` | draw the same rows at a compact height |
+| `expand` (default) | draw compact but individually readable rows |
+| `squish` | draw extremely compressed IGV-like bands, roughly 2–3 pixels per row at the default DPI |
 
 The display mode is separate from `--layout`. For `expand` and `squish`,
 `--layout pack` shares rows between non-overlapping reads, while
 `--layout expand` assigns one alignment to each row for ranking. `collapse`
 always uses one overlaid row, so the layout choice has no visible effect.
+Packing accepts reads on either side of intervals already placed in a row,
+so event-priority sorting does not leave artificial empty bands before a
+late-position discordant or split read.
+Squish also removes per-read event text, leaves almost no vertical gap, and
+retains coloured mismatch and structural-event marks. The precise
+heights and spacing remain configurable with `styles.row_height_in`,
+`styles.squish_row_height_in`, `styles.row_margin`, and
+`styles.squish_row_margin`.
+
+Read rectangles are borderless in every display mode by default. Set
+`styles.alignment_edge_width` or `styles.squish_alignment_edge_width` above
+zero in YAML to restore an outline. Gene and other annotation blocks use the
+independent `styles.annotation_edge_width` setting.
 
 ```bash
 python3 simple_bam_snap.py \
@@ -666,6 +830,9 @@ Common options:
 
 | Flag | Purpose |
 |---|---|
+| `--bam BAM` | indexed BAM input; repeat to stack multiple sample panels |
+| `--sample_label LABEL` | label corresponding to each repeated BAM |
+| `--vcf_companion VCF` | matched VCF for each BAM; repeat in order and use `none` for a missing companion |
 | `--display_mode {collapse,expand,squish}` | overlaid, normal-height, or compact alignment display |
 | `--layout {pack,expand}` | compact packing or one read per ranked row |
 | `--view_as_pairs` | place visible primary mates on one row and connect them |
@@ -683,6 +850,7 @@ Common options:
 | `--min_baseq Q` | minimum base quality for SNV evidence and its depth denominator |
 | `--min_variant_mapq Q` | minimum read MAPQ for SNV evidence and its depth denominator |
 | `--show_variant_counts` | label qualifying SNVs with depth, VAF, strand, BQ, and MAPQ statistics |
+| `--show_indel_lengths` | label CIGAR insertions and deletions with their lengths; hidden by default |
 | `--sort_by KEY` | rank by base, gap, SA count, soft clip, MAPQ, insert size, start, strand, or read name |
 | `--sort_base_position POS` | 1-based locus for base sorting; defaults to the window midpoint |
 | `--sort_order {desc,asc}` | sort direction |
@@ -693,16 +861,18 @@ Common options:
 | `--include_secondary` | include secondary alignments |
 | `--exclude_supplementary` | omit supplementary alignments |
 | `--include_duplicates` | include duplicate-marked reads |
-| `--genome {auto,hg19,hg38,none}` | select bundled UCSC cytobands or a neutral chromosome outline |
+| `--genome {auto,hg19,grch37,hg38,grch38,none}` | select bundled UCSC cytobands or a neutral chromosome outline |
 | `--cytoband_file PATH` | use a custom UCSC cytoBand table; optionally gzip-compressed |
+| `--refseq {auto,hg19,grch37,hg38,grch38,none}` | auto-download and load the matching indexed NCBI RefSeq isoform track |
+| `--refseq_dir DIR` | override the RefSeq BGZF/tabix cache directory |
 | `--no_ideogram` | hide the chromosome overview and red current-window marker |
 | `--no_coverage` | hide coverage tracks |
 | `--metrics_tsv PATH` | write per-read features and classifications |
-| `--track PATH` | add a BED, GFF/GTF, VCF, SEG, bedGraph, or log2/CNV track; repeatable |
+| `--track PATH` | add a BED, GFF/GTF, VCF, narrowPeak/broadPeak, signal, SEG, bedGraph, or log2/CNV track; repeatable |
 | `--track_label LABEL` | label the corresponding annotation track |
-| `--track_display {collapse,pack,expand}` | default layout for annotation tracks |
+| `--track_display {collapse,pack,expand,density}` | default annotation layout or compact interval-density histogram |
 | `--primary_isoforms {all,prefer,only}` | retain all transcripts, prefer annotated primary isoforms with fallback, or require a marker |
-| `--custom_track FILE TYPE NAME COLOR [DISPLAY]` | add a track with an optional layout override; repeatable |
+| `--custom_track 'FILE,TYPE,NAME,COLOR[,DISPLAY[,HEIGHT_IN]]'` | add a CSV-defined track with optional layout and physical-height overrides; repeatable |
 | `--baf_vcf VCF` | add a BAF/LOH track from heterozygous genotype calls; repeatable |
 | `--baf_sample SAMPLE` | sample for the corresponding BAF VCF; defaults to its first sample |
 | `--baf_track_label LABEL` | label for the corresponding BAF track |
@@ -730,35 +900,59 @@ window as median ± `--insert_size_sigma` robust standard deviations. At least
 Read opacity scales with MAPQ up to `--mapq_cap` (default 60). Use
 `--no_mapq_shading` or `--no_pair_colors` to disable those visual encodings.
 Soft-clipped and mismatch bases use A/C/G/T colours; insertions and deletions
-have their own markers.
+have their own markers. Their numeric lengths are hidden by default to reduce
+clutter; enable them with `--show_indel_lengths` or the equivalent YAML
+preference.
 
-The legend uses one plot-aligned rail divided into **Alignment events**, **Pair
-evidence**, and **Base identity** compartments. Haplotype-aware views replace
-the middle compartment with **Haplotype**. Internal dividers and alternating
-backgrounds keep related terms together. The compartments run side by side at
-normal figure widths and become horizontal sections in narrow output. A
-dedicated bottom margin and a rendered-bounds check keep the complete legend
-and coordinate labels clear of every plot track at all supported widths.
+The legend uses separate cards for **Alignment**, **Read events**, **Insert
+size**, **Pair geometry**, and **Base identity**, preventing CIGAR insertions
+from being visually conflated with discordant small-insert pairs.
+Haplotype-aware views replace the pair-specific cards with **Haplotype**.
+Cards run side by side at normal widths, reflow to a two-column grid on medium
+figures, and stack vertically on narrow output. A dedicated bottom margin and
+a rendered-bounds check keep every card and coordinate label clear of the plot.
+Typography and card spacing can be adjusted with
+`styles.legend_font_size`, `styles.legend_title_size`, and
+`styles.legend_compartment_gap` in YAML.
 
-## Compare two BAMs
+## Multiple BAMs and matched VCF companions
 
-Comparison mode stacks two BAM tracks over one shared genomic axis and prints
-a summary table:
+Repeat `--bam` to concatenate any number of sample panels over one shared
+genomic axis. BAM files are not merged: each retains its own header, coverage,
+alignment rows, downsampling, and summary column. Repeat `--sample_label` in
+the same order to name the panels.
+
+An optional `--vcf_companion` associates a variant track with each BAM. Supply
+exactly one value per BAM and use `none` when a sample has no companion. Each
+VCF is rendered directly below its sample header, so variants cannot be
+mistaken for a global annotation shared by every sample. Plain VCFs are
+supported; `.vcf.gz` companions require `.tbi` or `.csi` indexes.
 
 ```bash
 python3 simple_bam_snap.py \
-  --bam bwa.bam \
-  --bam2 minibwa.bam \
-  --label1 bwa \
-  --label2 minibwa \
+  --bam tumour.bam \
+  --bam normal.bam \
+  --bam relapse.bam \
+  --sample_label Tumour \
+  --sample_label Normal \
+  --sample_label Relapse \
+  --vcf_companion tumour.vcf.gz \
+  --vcf_companion none \
+  --vcf_companion relapse.vcf.gz \
   --region chr9:101867492-101867612 \
   --layout expand \
   --sort_by gap_length \
   --output_dir out \
-  --output_name compare
+  --output_name multi-sample
 ```
 
-Use `--metrics_tsv` and `--metrics_tsv2` to export both per-read tables.
+The earlier `--bam2`, `--label1`, and `--label2` interface remains available
+for two-panel commands. `--metrics_tsv` and `--metrics_tsv2` export the first
+two panels' per-read tables.
+
+Example: [`out/27_multi_bam_vcf_companions.png`](out/27_multi_bam_vcf_companions.png)
+shows three BAM panels, two matched indexed VCFs, and an explicit missing
+companion for the middle sample.
 
 ## Example output
 

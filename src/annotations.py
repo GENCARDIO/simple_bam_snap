@@ -1,6 +1,7 @@
 """Read interval, gene, variant, and copy-number annotation tracks."""
 from __future__ import annotations
 
+import csv
 import re
 from dataclasses import dataclass, field
 from math import isfinite
@@ -23,10 +24,13 @@ BAF_ANNOTATION_COLOR = DEFAULT_TRACK_COLORS["baf"]
 ANNOTATION_COLOR = GENE_ANNOTATION_COLOR  # backwards-compatible public name
 SUPPORTED_TRACK_FORMATS = (
     "bed", "gff", "gff3", "gtf", "vcf", "seg", "bedgraph", "bdg", "log2", "cnv",
+    "narrowpeak", "broadpeak", "peak", "signal",
 )
 CNV_TRACK_FORMATS = ("seg", "bedgraph", "bdg", "log2", "cnv")
 BAF_TRACK_FORMATS = ("baf",)
-ANNOTATION_DISPLAY_MODES = ("collapse", "pack", "expand")
+PEAK_TRACK_FORMATS = ("narrowpeak", "broadpeak", "peak")
+SIGNAL_TRACK_FORMATS = ("signal",)
+ANNOTATION_DISPLAY_MODES = ("collapse", "pack", "expand", "density")
 PRIMARY_ISOFORM_MODES = ("all", "prefer", "only")
 COMPRESSED_SUFFIXES = (".gz", ".bgz", ".bgzf")
 TRANSCRIPT_TYPES = {"transcript", "mrna", "ncrna", "trna", "rrna"}
@@ -52,6 +56,7 @@ class AnnotationItem:
     sample: str = ""
     primary_rank: Optional[int] = None
     primary_label: str = ""
+    summit: Optional[int] = None
 
 
 @dataclass
@@ -63,6 +68,7 @@ class LoadedAnnotationTrack:
     rows: List[List[AnnotationItem]]
     display_mode: str = "pack"
     color_by_sign: bool = False
+    height_in: Optional[float] = None
 
 
 def default_label(path: str) -> str:
@@ -74,7 +80,8 @@ def default_label(path: str) -> str:
             lower = lower[:-len(suffix)]
             break
     for suffix in (
-        ".bedgraph", ".gff3", ".gff", ".gtf", ".bed", ".vcf",
+        ".narrowpeak", ".broadpeak", ".bedgraph", ".signal",
+        ".gff3", ".gff", ".gtf", ".bed", ".vcf", ".peak",
         ".seg", ".bdg", ".log2", ".cnv",
     ):
         if lower.endswith(suffix):
@@ -94,7 +101,8 @@ def infer_track_format(path: str) -> str:
     if suffix not in SUPPORTED_TRACK_FORMATS:
         raise ValueError(
             f"Cannot infer annotation format for '{path}'. Expected .bed, .gff, .gff3, .gtf, "
-            ".vcf, .seg, .bedgraph/.bdg, .log2, or .cnv"
+            ".vcf, .narrowPeak, .broadPeak, .peak, .signal, .seg, "
+            ".bedgraph/.bdg, .log2, or .cnv"
             " (optionally followed by .gz/.bgz/.bgzf)."
         )
     return suffix
@@ -236,6 +244,8 @@ def primary_isoform_annotation(raw: str) -> Tuple[Optional[int], str]:
     normalized = re.sub(r"[^a-z0-9]+", "_", raw.lower()).strip("_")
     if "mane_select" in normalized:
         return 1, "MANE Select"
+    if "refseq_select" in normalized:
+        return 2, "RefSeq Select"
     if (
         "ensembl_canonical" in normalized
         or "transcript_is_canonical_1" in normalized
@@ -398,13 +408,65 @@ def parse_bedgraph(
         if not isfinite(value):
             continue
         if item_end <= item_start:
-            raise ValueError(f"CNV interval end must exceed start: {line.rstrip()}")
+            raise ValueError(f"bedGraph interval end must exceed start: {line.rstrip()}")
         if item_end <= start or item_start >= end:
             continue
         sample = fields[4] if len(fields) > 4 else ""
         items.append(AnnotationItem(
             item_start, item_end, sample, blocks=[(item_start, item_end)],
             value=value, sample=sample,
+        ))
+    return items
+
+
+def parse_peak(
+    lines: Iterable[str], chrom: str, start: int, end: int, kind: str
+) -> List[AnnotationItem]:
+    """Parse ENCODE narrowPeak/broadPeak or generic BED-like peak records."""
+    items = []
+    for line in lines:
+        fields = line.rstrip().split("\t")
+        if len(fields) < 3:
+            fields = line.split()
+        if len(fields) < 3 or fields[0] != chrom:
+            continue
+        try:
+            peak_start, peak_end = int(fields[1]), int(fields[2])
+        except ValueError as exc:
+            raise ValueError(f"Invalid peak coordinates: {line.rstrip()}") from exc
+        if peak_end <= peak_start:
+            raise ValueError(f"Peak interval end must exceed start: {line.rstrip()}")
+        if peak_end <= start or peak_start >= end:
+            continue
+
+        name = fields[3] if len(fields) > 3 and fields[3] != "." else ""
+        strand = fields[5] if len(fields) > 5 and fields[5] in ("+", "-") else "."
+        value = None
+        for field_index in (6, 4):
+            if len(fields) <= field_index or fields[field_index] in (".", "-1"):
+                continue
+            try:
+                candidate = float(fields[field_index])
+            except ValueError as exc:
+                raise ValueError(f"Invalid peak score: {line.rstrip()}") from exc
+            if isfinite(candidate) and candidate >= 0:
+                value = candidate
+                break
+        if value is None:
+            value = 1.0
+
+        summit = None
+        if kind in ("narrowpeak", "peak") and len(fields) > 9 and fields[9] not in (".", "-1"):
+            try:
+                summit_offset = int(fields[9])
+            except ValueError as exc:
+                raise ValueError(f"Invalid narrowPeak summit offset: {line.rstrip()}") from exc
+            if 0 <= summit_offset < peak_end - peak_start:
+                summit = peak_start + summit_offset
+
+        items.append(AnnotationItem(
+            peak_start, peak_end, name=name, strand=strand,
+            blocks=[(peak_start, peak_end)], value=value, summit=summit,
         ))
     return items
 
@@ -488,20 +550,27 @@ def parse_seg(
     return items
 
 
+def normalize_gff_identifier(value: str) -> str:
+    for prefix in ("rna-", "transcript:"):
+        if value.startswith(prefix):
+            return value[len(prefix):]
+    return value
+
+
 def gff_group_ids(feature_type: str, attributes: Dict[str, str]) -> List[str]:
     transcript_id = attributes.get("transcript_id")
     if transcript_id:
-        return [transcript_id]
+        return [normalize_gff_identifier(transcript_id)]
     if feature_type in TRANSCRIPT_TYPES:
         identifier = attributes.get("ID")
         if identifier:
-            return [identifier]
+            return [normalize_gff_identifier(identifier)]
     parent = attributes.get("Parent")
     if parent:
         parents = []
         for value in parent.split(","):
             if value:
-                parents.append(value)
+                parents.append(normalize_gff_identifier(value))
         return parents
     fallback = attributes.get("gene_id") or attributes.get("ID")
     return [fallback] if fallback else []
@@ -528,7 +597,8 @@ def parse_gff(lines: Iterable[str], chrom: str, start: int, end: int) -> List[An
         strand = fields[6] if fields[6] in ("+", "-") else "."
         label = (
             attributes.get("Name") or attributes.get("gene_name") or
-            attributes.get("transcript_name") or attributes.get("gene_id") or ""
+            attributes.get("transcript_name") or attributes.get("gene") or
+            attributes.get("gene_id") or ""
         )
 
         if feature_type == "gene":
@@ -552,7 +622,10 @@ def parse_gff(lines: Iterable[str], chrom: str, start: int, end: int) -> List[An
             if not gene_group and feature_type in TRANSCRIPT_TYPES:
                 gene_group = attributes.get("Parent", "").split(",")[0]
             gene_group = gene_group or group_id
-            gene_label = attributes.get("gene_name") or gene_labels.get(gene_group, "")
+            gene_label = (
+                attributes.get("gene_name") or attributes.get("gene")
+                or gene_labels.get(gene_group, "")
+            )
             transcript_label = (
                 attributes.get("transcript_name")
                 or attributes.get("Name")
@@ -578,7 +651,13 @@ def parse_gff(lines: Iterable[str], chrom: str, start: int, end: int) -> List[An
                 model["group"] = gene_group
             if gene_label:
                 model["group_label"] = gene_label
-            if transcript_label and transcript_label != group_id:
+            if (
+                transcript_label and transcript_label != group_id
+                and (
+                    feature_type in TRANSCRIPT_TYPES
+                    or not model["transcript_label"]
+                )
+            ):
                 model["transcript_label"] = transcript_label
             if primary_rank is not None and (
                 model["primary_rank"] is None or primary_rank < model["primary_rank"]
@@ -637,6 +716,7 @@ class AnnotationSource:
         color: Optional[str] = None,
         kind: Optional[str] = None,
         display_mode: str = "pack",
+        height_in: Optional[float] = None,
         primary_isoforms: str = "all",
         track_colors: Optional[Dict[str, str]] = None,
     ):
@@ -650,7 +730,7 @@ class AnnotationSource:
         if explicit_kind is not None and explicit_kind not in SUPPORTED_TRACK_FORMATS:
             raise ValueError(
                 f"Unsupported annotation type '{kind}'. Choose bed, gff, gff3, gtf, vcf, "
-                "seg, bedgraph, log2, cnv, or auto."
+                "narrowpeak, broadpeak, peak, signal, seg, bedgraph, log2, cnv, or auto."
             )
         self.kind = explicit_kind or infer_track_format(self.path)
         if display_mode not in ANNOTATION_DISPLAY_MODES:
@@ -659,6 +739,9 @@ class AnnotationSource:
                 f"{', '.join(ANNOTATION_DISPLAY_MODES)}."
             )
         self.display_mode = display_mode
+        if height_in is not None and height_in <= 0:
+            raise ValueError("Annotation track height must be greater than zero.")
+        self.height_in = float(height_in) if height_in is not None else None
         if primary_isoforms not in PRIMARY_ISOFORM_MODES:
             raise ValueError(
                 f"Unsupported primary-isoform mode '{primary_isoforms}'. Choose "
@@ -674,6 +757,10 @@ class AnnotationSource:
             self.color = colors["bed"]
         elif self.kind == "vcf":
             self.color = colors["vcf"]
+        elif self.kind in PEAK_TRACK_FORMATS:
+            self.color = colors["peak"]
+        elif self.kind in SIGNAL_TRACK_FORMATS:
+            self.color = colors["signal"]
         elif self.kind in CNV_TRACK_FORMATS:
             self.color = colors["cnv"]
         else:
@@ -735,13 +822,28 @@ class AnnotationSource:
             items = parse_vcf(lines, chrom, start, end)
         elif self.kind in ("bedgraph", "log2"):
             items = parse_bedgraph(lines, chrom, start, end)
+        elif self.kind in SIGNAL_TRACK_FORMATS:
+            items = parse_bedgraph(lines, chrom, start, end)
+            for item in items:
+                if item.value is not None and item.value < 0:
+                    raise ValueError(
+                        "Epigenomic signal tracks require non-negative values; "
+                        "use bedgraph or log2 for signed copy-number data."
+                    )
+        elif self.kind in PEAK_TRACK_FORMATS:
+            items = parse_peak(lines, chrom, start, end, self.kind)
         elif self.kind in ("seg", "cnv"):
             items = parse_seg(lines, chrom, start, end)
         else:
             items = parse_gff(lines, chrom, start, end)
         if self.kind in ("gff", "gff3", "gtf"):
             items = select_primary_isoforms(items, self.primary_isoforms)
-        if self.kind in CNV_TRACK_FORMATS:
+        if (
+            self.kind in CNV_TRACK_FORMATS
+            or self.kind in PEAK_TRACK_FORMATS
+            or self.kind in SIGNAL_TRACK_FORMATS
+            or self.display_mode == "density"
+        ):
             rows = [items] if items else []
         elif self.display_mode == "expand":
             rows = []
@@ -759,7 +861,7 @@ class AnnotationSource:
         return LoadedAnnotationTrack(
             label=self.label, kind=self.kind, color=self.color,
             items=items, rows=rows, display_mode=self.display_mode,
-            color_by_sign=self.color_by_sign,
+            color_by_sign=self.color_by_sign, height_in=self.height_in,
         )
 
 
@@ -877,23 +979,68 @@ def build_annotation_sources(
 
 
 def build_custom_annotation_sources(
-    specifications: Optional[Sequence[Sequence[str]]],
+    specifications: Optional[Sequence[Sequence[str] | str]],
     default_display_mode: str = "pack",
     primary_isoforms: str = "all",
     track_colors: Optional[Dict[str, str]] = None,
 ) -> List[AnnotationSource]:
-    """Build repeatable ``FILE TYPE NAME COLOR [DISPLAY]`` track definitions."""
+    """Build repeatable comma-separated or legacy whitespace track definitions."""
     sources = []
     for specification in specifications or []:
-        if len(specification) not in (4, 5):
+        if isinstance(specification, str):
+            fields = [specification]
+        else:
+            fields = list(specification)
+        if len(fields) == 1 and "," in fields[0]:
+            try:
+                fields = next(csv.reader([fields[0]], skipinitialspace=True, strict=True))
+            except csv.Error as exc:
+                raise ValueError(
+                    f"Invalid comma-separated --custom_track definition: {exc}."
+                ) from exc
+            stripped_fields = []
+            for field in fields:
+                stripped_fields.append(field.strip())
+            fields = stripped_fields
+
+            # Preserve the already-supported unquoted R,G,B and rgb(R,G,B)
+            # colour forms even though their internal commas are CSV separators.
+            if len(fields) in (6, 7, 8):
+                color_candidate = ",".join(fields[3:6])
+                if re.fullmatch(
+                    r"(?:rgb\s*\()?\s*\d{1,3}\s*,\s*\d{1,3}\s*,\s*\d{1,3}\s*\)?",
+                    color_candidate,
+                    flags=re.IGNORECASE,
+                ):
+                    fields = fields[:3] + [color_candidate] + fields[6:]
+
+        if len(fields) not in (4, 5, 6):
             raise ValueError(
-                "Each --custom_track requires FILE TYPE NAME COLOR and an optional DISPLAY."
+                "Each --custom_track requires one CSV value "
+                "FILE,TYPE,NAME,COLOR[,DISPLAY[,HEIGHT_IN]]. Quote CSV fields "
+                "containing commas. The legacy FILE TYPE NAME COLOR "
+                "[DISPLAY [HEIGHT_IN]] form is also accepted."
             )
-        path, kind, name, color = specification[:4]
-        display_mode = specification[4] if len(specification) == 5 else default_display_mode
+        if not all(fields[:4]):
+            raise ValueError(
+                "FILE, TYPE, NAME, and COLOR cannot be empty in --custom_track."
+            )
+        path, kind, name, color = fields[:4]
+        display_mode = fields[4] if len(fields) >= 5 else default_display_mode
+        height_in = None
+        if len(fields) == 6:
+            try:
+                height_in = float(fields[5])
+            except ValueError as exc:
+                raise ValueError(
+                    f"Custom track HEIGHT_IN must be numeric, got {fields[5]!r}."
+                ) from exc
+            if height_in <= 0:
+                raise ValueError("Custom track HEIGHT_IN must be greater than zero.")
         sources.append(AnnotationSource(
             path=path, kind=kind, label=name, color=color,
-            display_mode=display_mode, primary_isoforms=primary_isoforms,
+            display_mode=display_mode, height_in=height_in,
+            primary_isoforms=primary_isoforms,
             track_colors=track_colors,
         ))
     return sources

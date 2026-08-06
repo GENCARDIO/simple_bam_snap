@@ -21,6 +21,7 @@ BUNDLED_CYTOBANDS = {
     "hg19": DATA_DIR / "hg19.cytoBand.txt.gz",
     "hg38": DATA_DIR / "hg38.cytoBand.txt.gz",
 }
+GENOME_ALIASES = {"grch37": "hg19", "grch38": "hg38"}
 
 
 def load_cytobands(path: str | Path) -> Dict[str, List[Cytoband]]:
@@ -89,6 +90,7 @@ def resolve_cytobands(
     unique best bundled assembly. It therefore never guesses from chromosome
     names alone.
     """
+    genome = GENOME_ALIASES.get(genome.lower(), genome.lower())
     if custom_path:
         return load_cytobands(custom_path), Path(custom_path).name
     if genome == "none":
@@ -96,7 +98,9 @@ def resolve_cytobands(
     if genome in BUNDLED_CYTOBANDS:
         return load_cytobands(BUNDLED_CYTOBANDS[genome]), genome
     if genome != "auto":
-        raise ValueError(f"Unknown genome '{genome}'. Choose auto, hg19, hg38, or none.")
+        raise ValueError(
+            f"Unknown genome '{genome}'. Choose auto, hg19/GRCh37, hg38/GRCh38, or none."
+        )
 
     candidates = []
     for assembly, path in BUNDLED_CYTOBANDS.items():

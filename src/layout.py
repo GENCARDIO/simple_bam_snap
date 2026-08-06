@@ -21,8 +21,9 @@ regardless of the selected layout.
 """
 from __future__ import annotations
 
+from bisect import bisect_left
 from functools import partial
-from typing import Callable, List, Optional
+from typing import Callable, List, Optional, Tuple
 
 from src.read_model import AlignedRead
 
@@ -158,29 +159,43 @@ def pack_rows(
     view_as_pairs: bool = False,
     base_position: Optional[int] = None, reference_base: Optional[str] = None,
 ) -> List[List[AlignedRead]]:
-    """Greedy interval packing: process reads in priority order, place each
-    in the first row whose rightmost read ends (plus padding) before this
-    read starts, else open a new row."""
+    """Greedily pack priority-ordered groups into non-overlapping rows.
+
+    A row can accept a group before, after, or between intervals already in
+    that row. This matters when the priority sort is not genomic: a late
+    discordant read must not permanently block the empty left side of a row.
+    """
     groups = group_reads(
         reads, sort_by, descending, view_as_pairs,
         base_position=base_position, reference_base=reference_base,
     )
 
     rows: List[List[AlignedRead]] = []
-    row_ends: List[int] = []
+    row_intervals: List[List[Tuple[int, int]]] = []
     for group in groups:
         group_start = min(read.ref_start for read in group)
         group_end = max(read.ref_end for read in group)
         placed = False
-        for i, row_end in enumerate(row_ends):
-            if row_end + padding <= group_start:
-                rows[i].extend(group)
-                row_ends[i] = max(row_end, group_end)
-                placed = True
-                break
+        for row_index, intervals in enumerate(row_intervals):
+            insert_at = bisect_left(intervals, (group_start, group_end))
+            overlaps_left = (
+                insert_at > 0
+                and intervals[insert_at - 1][1] + padding > group_start
+            )
+            overlaps_right = (
+                insert_at < len(intervals)
+                and group_end + padding > intervals[insert_at][0]
+            )
+            if overlaps_left or overlaps_right:
+                continue
+            intervals.insert(insert_at, (group_start, group_end))
+            rows[row_index].extend(group)
+            rows[row_index].sort(key=lambda read: read.ref_start)
+            placed = True
+            break
         if not placed:
             rows.append(list(group))
-            row_ends.append(group_end)
+            row_intervals.append([(group_start, group_end)])
     return rows
 
 

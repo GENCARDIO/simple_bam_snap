@@ -29,6 +29,8 @@ DEFAULT_TRACK_COLORS = {
     "vcf": "#7a1f5c",
     "cnv": "#555555",
     "baf": "#7a1f5c",
+    "peak": "#7b3294",
+    "signal": "#2c7fb8",
 }
 DEFAULT_VISUAL_COLORS = {
     "deletion": "#0b0b0b",
@@ -67,13 +69,15 @@ DEFAULT_CHROMOSOME_PALETTE = [
     "#e87ba4", "#008300", "#4a3aa7", "#e34948",
 ]
 DEFAULT_STYLES = {
-    "row_height_in": 0.22,
-    "squish_row_height_in": 0.10,
-    "row_margin": 0.12,
-    "squish_row_margin": 0.22,
+    "row_height_in": 0.06,
+    "squish_row_height_in": 0.015,
+    "row_margin": 0.08,
+    "squish_row_margin": 0.02,
     "annotation_row_height_in": 0.30,
     "cnv_track_height_in": 1.15,
     "baf_track_height_in": 1.05,
+    "peak_track_height_in": 1.05,
+    "coverage_track_height_in": 1.40,
     "ideogram_height_in": 0.34,
     "panel_header_height_in": 0.30,
     "reference_height_in": 0.38,
@@ -81,18 +85,30 @@ DEFAULT_STYLES = {
     "secondary_alignment_alpha": 0.50,
     "mapq_alpha_floor": 0.15,
     "coverage_alpha": 0.85,
+    "coverage_bins_per_pixel": 1.00,
     "reference_base_alpha": 0.20,
     "cnv_fill_alpha": 0.28,
     "baf_alpha": 0.90,
+    "peak_fill_alpha": 0.55,
+    "density_fill_alpha": 0.45,
     "haplotype_lane_alpha": 0.055,
-    "alignment_edge_width": 0.30,
+    "alignment_edge_width": 0.00,
+    "squish_alignment_edge_width": 0.00,
+    "annotation_edge_width": 0.30,
     "pair_link_width": 0.85,
+    "squish_pair_link_width": 0.40,
     "grid_line_width": 0.60,
     "gene_line_width": 0.55,
     "primary_gene_line_width": 0.85,
+    "gene_arrow_size": 2.20,
+    "gene_arrow_spacing_px": 13.0,
+    "peak_summit_width": 0.85,
     "center_guide_alpha": 0.65,
     "center_guide_width": 0.80,
     "center_guide_line_style": "--",
+    "legend_font_size": 6.80,
+    "legend_title_size": 7.30,
+    "legend_compartment_gap": 0.010,
     "sashimi_track_height_in": 1.25,
     "sashimi_arc_alpha": 0.85,
     "sashimi_min_line_width": 0.80,
@@ -121,12 +137,17 @@ COLOR_SECTIONS = (
 ALPHA_STYLE_KEYS = {
     "alignment_alpha", "secondary_alignment_alpha", "mapq_alpha_floor",
     "coverage_alpha", "reference_base_alpha", "cnv_fill_alpha", "baf_alpha",
+    "peak_fill_alpha", "density_fill_alpha",
     "haplotype_lane_alpha",
     "center_guide_alpha",
     "sashimi_arc_alpha",
 }
 STRING_STYLE_CHOICES = {
     "center_guide_line_style": ("-", "--", ":", "-."),
+}
+NONNEGATIVE_STYLE_KEYS = {
+    "alignment_edge_width", "squish_alignment_edge_width",
+    "annotation_edge_width",
 }
 
 
@@ -202,7 +223,9 @@ def load_config(path: Optional[str] = None) -> Dict[str, Any]:
             raise ValueError(f"Style {key} must be numeric, got {value!r}.")
         if key in ALPHA_STYLE_KEYS and not 0 <= value <= 1:
             raise ValueError(f"Style {key} must be between 0 and 1.")
-        if key not in ALPHA_STYLE_KEYS and value <= 0:
+        if key in NONNEGATIVE_STYLE_KEYS and value < 0:
+            raise ValueError(f"Style {key} must be zero or greater.")
+        if key not in ALPHA_STYLE_KEYS and key not in NONNEGATIVE_STYLE_KEYS and value <= 0:
             raise ValueError(f"Style {key} must be greater than zero.")
         config["styles"][key] = float(value)
 

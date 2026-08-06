@@ -23,6 +23,9 @@ preferences:
   max_reference_span: 250
   show_ideogram: true
   genome: auto
+  # Auto-detect hg19/GRCh37 or hg38/GRCh38 and load its cached RefSeq GFF.
+  refseq: auto
+  # refseq_dir: /path/to/shared/refseq-cache
   show_coverage: true
   coverage_vaf_threshold: 0.20
   min_baseq: 0
@@ -39,6 +42,7 @@ preferences:
   mate_view: false
   mate_window_source: discordant
   annotate_gap: true
+  show_indel_lengths: false
   fig_width: 14.0
   # Omit output_format to infer it from output_name, falling back to PNG.
   # output_format: png
@@ -68,6 +72,8 @@ track_colors:
   vcf: "#7a1f5c"
   cnv: "#555555"
   baf: "#7a1f5c"
+  peak: "#7b3294"
+  signal: "#2c7fb8"
 
 visual_colors:
   deletion: "#0b0b0b"
@@ -119,13 +125,17 @@ chromosome_palette:
   - "#e34948"
 
 styles:
-  row_height_in: 0.22
-  squish_row_height_in: 0.10
-  row_margin: 0.12
-  squish_row_margin: 0.22
+  # Normal rows remain readable but avoid wasting height in deep regions.
+  row_height_in: 0.06
+  # At the default 150 DPI, squish rows occupy about 2.25 pixels each.
+  squish_row_height_in: 0.015
+  row_margin: 0.08
+  squish_row_margin: 0.02
   annotation_row_height_in: 0.30
   cnv_track_height_in: 1.15
   baf_track_height_in: 1.05
+  peak_track_height_in: 1.05
+  coverage_track_height_in: 1.40
   ideogram_height_in: 0.34
   panel_header_height_in: 0.30
   reference_height_in: 0.38
@@ -133,18 +143,34 @@ styles:
   secondary_alignment_alpha: 0.50
   mapq_alpha_floor: 0.15
   coverage_alpha: 0.85
+  # Wide windows use at most this many mean-depth bins per horizontal pixel.
+  coverage_bins_per_pixel: 1.00
   reference_base_alpha: 0.20
   cnv_fill_alpha: 0.28
   baf_alpha: 0.90
+  peak_fill_alpha: 0.55
+  density_fill_alpha: 0.45
   haplotype_lane_alpha: 0.055
-  alignment_edge_width: 0.30
+  # Reads have no rectangular border by default.
+  alignment_edge_width: 0.00
+  squish_alignment_edge_width: 0.00
+  # Annotation blocks retain an independent subtle outline.
+  annotation_edge_width: 0.30
   pair_link_width: 0.85
+  squish_pair_link_width: 0.40
   grid_line_width: 0.60
   gene_line_width: 0.55
   primary_gene_line_width: 0.85
+  # Every visible intron gets at least one strand-direction arrow.
+  gene_arrow_size: 2.20
+  gene_arrow_spacing_px: 13.0
+  peak_summit_width: 0.85
   center_guide_alpha: 0.65
   center_guide_width: 0.80
   center_guide_line_style: "--"
+  legend_font_size: 6.80
+  legend_title_size: 7.30
+  legend_compartment_gap: 0.010
   sashimi_track_height_in: 1.25
   sashimi_arc_alpha: 0.85
   sashimi_min_line_width: 0.80

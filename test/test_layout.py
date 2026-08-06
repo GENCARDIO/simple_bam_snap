@@ -56,6 +56,17 @@ def test_pack_rows_compacts_non_overlapping_reads_into_one_row():
     assert len(rows[0]) == 3
 
 
+def test_pack_rows_can_insert_before_a_priority_read():
+    reads = [
+        FakeRead(100, 110, gap_length=10, query_name="priority-right"),
+        FakeRead(0, 10, gap_length=0, query_name="left"),
+    ]
+    rows = pack_rows(reads, sort_by="gap_length", descending=True, padding=0)
+
+    assert len(rows) == 1
+    assert [read.query_name for read in rows[0]] == ["left", "priority-right"]
+
+
 def test_expand_rows_one_read_per_row_sorted_desc_by_gap_length():
     reads = [
         FakeRead(0, 10, gap_length=1, query_name="a"),

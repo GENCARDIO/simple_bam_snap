@@ -25,7 +25,16 @@ def test_auto_detects_hg19_from_exact_contig_length():
     bands, assembly = resolve_cytobands({"chr9": 141_213_431})
 
     assert assembly == "hg19"
-    assert bands_for_chrom(bands, "chr9")
+
+
+def test_grch_aliases_select_corresponding_ucsc_cytobands():
+    grch37, assembly37 = resolve_cytobands({}, genome="grch37")
+    grch38, assembly38 = resolve_cytobands({}, genome="grch38")
+
+    assert assembly37 == "hg19"
+    assert assembly38 == "hg38"
+    assert bands_for_chrom(grch37, "chr9")
+    assert bands_for_chrom(grch38, "chr9")
 
 
 def test_auto_detection_does_not_guess_unknown_assembly():

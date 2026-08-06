@@ -118,6 +118,7 @@ def test_yaml_preferences_become_defaults_but_cli_still_wins():
         "max_alignment_depth": 175,
         "view_as_pairs": True,
         "show_coverage": False,
+        "show_indel_lengths": True,
         "include_supplementary": False,
         "output_format": "svg",
     })
@@ -134,10 +135,45 @@ def test_yaml_preferences_become_defaults_but_cli_still_wins():
     assert configured.max_alignment_depth == 175
     assert configured.view_as_pairs
     assert configured.no_coverage
+    assert configured.show_indel_lengths
     assert configured.exclude_supplementary
     assert configured.output_format == "svg"
     assert overridden.display_mode == "expand"
     assert overridden.max_alignment_depth == 80
+
+
+def test_refseq_defaults_to_auto_and_can_be_disabled_from_yaml():
+    parser = build_parser()
+    defaults = parser.parse_args([
+        "--bam", "reads.bam", "--region", "chr1:1-10",
+    ])
+    apply_config_preferences(parser, {"refseq": "none"})
+    disabled = parser.parse_args([
+        "--bam", "reads.bam", "--region", "chr1:1-10",
+    ])
+
+    assert defaults.refseq == "auto"
+    assert disabled.refseq == "none"
+
+
+def test_parser_accepts_repeated_bams_labels_and_vcf_companions():
+    parser = build_parser()
+    args = parser.parse_args([
+        "--bam", "tumour.bam",
+        "--bam", "normal.bam",
+        "--bam", "relapse.bam",
+        "--sample_label", "Tumour",
+        "--sample_label", "Normal",
+        "--sample_label", "Relapse",
+        "--vcf_companion", "tumour.vcf.gz",
+        "--vcf_companion", "none",
+        "--vcf_companion", "relapse.vcf.gz",
+        "--region", "chr1:1-10",
+    ])
+
+    assert args.bam == ["tumour.bam", "normal.bam", "relapse.bam"]
+    assert args.sample_label == ["Tumour", "Normal", "Relapse"]
+    assert args.vcf_companion == ["tumour.vcf.gz", "none", "relapse.vcf.gz"]
 
 
 @pytest.mark.parametrize(
@@ -164,3 +200,16 @@ def test_invalid_yaml_preference_is_rejected():
         apply_config_preferences(parser, {"display_mode": "microscopic"})
     with pytest.raises(ValueError, match="Unknown preference"):
         apply_config_preferences(parser, {"not_an_option": 3})
+
+
+def test_squish_outline_can_be_disabled_in_yaml(tmp_path):
+    config = tmp_path / "squish.yaml"
+    config.write_text(
+        "styles:\n"
+        "  squish_alignment_edge_width: 0\n",
+        encoding="utf-8",
+    )
+
+    theme = load_config(str(config))
+
+    assert theme["styles"]["squish_alignment_edge_width"] == 0

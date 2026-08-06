@@ -18,9 +18,12 @@ import os
 import re
 import sys
 
+import pysam
+
 from src.annotations import (
     ANNOTATION_DISPLAY_MODES,
     PRIMARY_ISOFORM_MODES,
+    AnnotationSource,
     build_annotation_sources,
     build_baf_sources,
     build_custom_annotation_sources,
@@ -30,6 +33,9 @@ from src.downsample import DEFAULT_MAX_ALIGNMENT_DEPTH
 from src.layout import DISPLAY_MODES, HAPLOTYPE_VIEWS, SORT_KEYS
 from src.mate_window import MATE_WINDOW_SOURCES
 from src.read_model import ONLY_TYPES
+from src.refseq import (
+    REFSEQ_LABELS, detect_human_assembly, ensure_refseq, normalize_assembly,
+)
 from src.render import DEFAULT_COVERAGE_VAF_THRESHOLD, DEFAULT_MAX_REFERENCE_SPAN
 from src.snapshot import OUTPUT_FORMATS, BamSnapshot, compare_snapshots
 
@@ -69,8 +75,14 @@ def build_parser() -> argparse.ArgumentParser:
         description="IGV-like genomic snapshot generator with sortable alignment layout.",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
-    parser.add_argument("--bam", required=True, help="Input BAM file (indexed).")
-    parser.add_argument("--bam2", help="Optional second BAM for a stacked comparison snapshot.")
+    parser.add_argument(
+        "--bam", action="append", required=True, metavar="BAM",
+        help="Indexed BAM input; repeat to stack any number of sample panels.",
+    )
+    parser.add_argument(
+        "--bam2",
+        help="Legacy second BAM option; equivalent to repeating --bam.",
+    )
     parser.add_argument("--region", required=True, help="Region as chrom:start-end (1-based, inclusive).")
     parser.add_argument("--fasta", help="Reference FASTA (indexed or indexable). Enables mismatch/base coloring.")
     parser.add_argument(
@@ -93,6 +105,15 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--label1", help="Label for --bam in comparison mode (default: file stem).")
     parser.add_argument("--label2", help="Label for --bam2 in comparison mode (default: file stem).")
     parser.add_argument(
+        "--sample_label", action="append", metavar="LABEL",
+        help="Label for the corresponding repeated --bam, supplied in the same order.",
+    )
+    parser.add_argument(
+        "--vcf_companion", action="append", metavar="VCF",
+        help=("VCF companion for each repeated --bam, in the same order. Repeat once per "
+              "BAM and use 'none' for a sample without a VCF. Compressed VCFs require an index."),
+    )
+    parser.add_argument(
         "--config", help=(
             "YAML file defining default preferences, colours, and rendering styles. "
             "Explicit command-line options override YAML preferences."
@@ -108,7 +129,8 @@ def build_parser() -> argparse.ArgumentParser:
     track_group = parser.add_argument_group("genomic and quantitative tracks")
     track_group.add_argument(
         "--track", action="append", metavar="PATH",
-        help=("BED, GFF/GFF3, GTF, VCF, SEG, bedGraph, or log2/CNV track; "
+        help=("BED, GFF/GFF3, GTF, VCF, narrowPeak/broadPeak, signal, SEG, "
+              "bedGraph, or log2/CNV track; "
               "repeat for multiple tracks. "
               "Compressed tracks require a .tbi or .csi tabix index."),
     )
@@ -117,19 +139,22 @@ def build_parser() -> argparse.ArgumentParser:
         help="Optional label for the corresponding --track, supplied in the same order.",
     )
     track_group.add_argument(
-        "--custom_track", action="append", nargs="+", metavar="VALUE",
-        help=("Define a custom annotation track as FILE TYPE NAME COLOR [DISPLAY]; "
-              "repeat as needed. TYPE is bed, gff, gff3, gtf, vcf, seg, "
-              "bedgraph, log2, cnv, or auto. "
-              "COLOR accepts quoted hex, R,G,B, or rgb(R,G,B). "
-              "DISPLAY optionally overrides --track_display with collapse, pack, or expand. "
+        "--custom_track", action="append", nargs="+", metavar="SPEC",
+        help=("Define one track as the recommended CSV value "
+              "'FILE,TYPE,NAME,COLOR[,DISPLAY[,HEIGHT_IN]]'; repeat as needed. "
+              "The legacy FILE TYPE NAME COLOR [DISPLAY [HEIGHT_IN]] form remains accepted. "
+              "TYPE is bed, gff, gff3, gtf, vcf, narrowpeak, broadpeak, peak, "
+              "signal, seg, bedgraph, log2, cnv, or auto. "
+              "COLOR accepts hex, R,G,B, or rgb(R,G,B). "
+              "DISPLAY optionally overrides --track_display with collapse, pack, expand, "
+              "or density; HEIGHT_IN optionally sets this track's physical height. "
               "BGZF files require .tbi/.csi and are fetched by genomic region with tabix."),
     )
     track_group.add_argument(
         "--track_display", choices=ANNOTATION_DISPLAY_MODES, default="pack",
         help=("Default annotation layout: collapse merges transcript isoforms by gene; "
               "pack shares rows between non-overlapping models; expand uses one row "
-              "per transcript."),
+              "per transcript; density bins interval overlap into a compact histogram."),
     )
     track_group.add_argument(
         "--primary_isoforms", choices=PRIMARY_ISOFORM_MODES, default="all",
@@ -256,7 +281,8 @@ def build_parser() -> argparse.ArgumentParser:
         help="Show a vertical guide through the center of each genomic panel.",
     )
     parser.add_argument(
-        "--genome", choices=["auto", "hg19", "hg38", "none"], default="auto",
+        "--genome", choices=["auto", "hg19", "grch37", "hg38", "grch38", "none"],
+        default="auto",
         help=("Cytoband assembly for the ideogram. auto selects bundled UCSC hg19/hg38 "
               "only from exact BAM contig-length matches; none uses a plain chromosome bar."),
     )
@@ -264,6 +290,18 @@ def build_parser() -> argparse.ArgumentParser:
         "--cytoband_file",
         help=("Custom UCSC five-column cytoBand text file, optionally gzip-compressed. "
               "Overrides --genome."),
+    )
+    parser.add_argument(
+        "--refseq",
+        choices=["auto", "hg19", "grch37", "hg38", "grch38", "none"],
+        default="auto",
+        help=("Automatically load the indexed NCBI RefSeq isoform track for "
+              "the BAM assembly; choose an assembly explicitly or none to disable it."),
+    )
+    parser.add_argument(
+        "--refseq_dir", metavar="DIR",
+        help=("Cache directory for automatically downloaded RefSeq GFF and tabix index. "
+              "Defaults to data/ucsc/refseq in this project."),
     )
     parser.add_argument("--no_coverage", action="store_true", help="Hide the coverage track.")
     rna_group = parser.add_argument_group("RNA-seq / sashimi")
@@ -299,6 +337,10 @@ def build_parser() -> argparse.ArgumentParser:
               "mean base quality, and mean MAPQ when base spacing permits."),
     )
     parser.add_argument("--no_annotate", action="store_true", help="Hide the per-row gap-length annotation (expand layout).")
+    parser.add_argument(
+        "--show_indel_lengths", action="store_true",
+        help="Label CIGAR insertions and deletions with their lengths; hidden by default.",
+    )
     parser.add_argument("--fig_width", type=float, default=14.0, help="Figure width in inches.")
     parser.add_argument(
         "--dpi", type=int, default=150,
@@ -363,14 +405,46 @@ def main(argv=None) -> int:
         return 1
     args = parser.parse_args(command_args)
 
+    bam_paths = list(args.bam)
+    if args.bam2:
+        bam_paths.append(args.bam2)
+    sample_labels = list(args.sample_label or [])
+    if sample_labels and (args.label1 or args.label2):
+        log.error("--sample_label cannot be combined with legacy --label1/--label2.")
+        return 1
+    if len(sample_labels) > len(bam_paths):
+        log.error("More --sample_label values were supplied than --bam files.")
+        return 1
+    while len(sample_labels) < len(bam_paths):
+        sample_labels.append(None)
+    if not args.sample_label:
+        if args.label1:
+            sample_labels[0] = args.label1
+        if args.label2 and len(sample_labels) > 1:
+            sample_labels[1] = args.label2
+    for index, bam_path in enumerate(bam_paths):
+        if not sample_labels[index]:
+            sample_labels[index] = os.path.splitext(os.path.basename(bam_path))[0]
+
+    companion_vcfs = []
+    for value in args.vcf_companion or []:
+        companion_vcfs.append(None if value.lower() in ("none", ".", "na") else value)
+    if companion_vcfs and len(companion_vcfs) != len(bam_paths):
+        log.error(
+            "Supply exactly one --vcf_companion per --bam; use 'none' for missing companions."
+        )
+        return 1
+    if not companion_vcfs:
+        companion_vcfs = [None] * len(bam_paths)
+
     try:
         chrom, start, end = parse_region(args.region, flank=args.flank)
     except ValueError as exc:
         log.error(str(exc))
         return 1
 
-    if args.mate_view and args.bam2:
-        log.error("--mate_view cannot be combined with --bam2 comparison mode.")
+    if args.mate_view and len(bam_paths) > 1:
+        log.error("--mate_view cannot be combined with multiple BAM panels.")
         return 1
     if args.mate_window_size is not None and args.mate_window_size <= 0:
         log.error("--mate_window_size must be greater than zero.")
@@ -438,12 +512,57 @@ def main(argv=None) -> int:
         log.error(str(exc))
         return 1
 
-    if not os.path.isfile(args.bam):
-        log.error("Cannot find --bam file: %s", args.bam)
-        return 1
+    for bam_path in bam_paths:
+        if not os.path.isfile(bam_path):
+            log.error("Cannot find --bam file: %s", bam_path)
+            return 1
     if args.fasta and not os.path.isfile(args.fasta):
         log.error("Cannot find --fasta file: %s", args.fasta)
         return 1
+
+    if args.refseq != "none":
+        selected_refseq = args.refseq
+        detected_assemblies = set()
+        try:
+            for bam_path in bam_paths:
+                with pysam.AlignmentFile(bam_path, "rb") as bam_file:
+                    contig_lengths = dict(zip(bam_file.references, bam_file.lengths))
+                detected = detect_human_assembly(contig_lengths)
+                if detected:
+                    detected_assemblies.add(detected)
+            if len(detected_assemblies) > 1:
+                assemblies = ", ".join(sorted(detected_assemblies))
+                raise ValueError(
+                    f"BAM inputs use different detected assemblies ({assemblies}); "
+                    "automatic RefSeq cannot be shared."
+                )
+            detected = next(iter(detected_assemblies), None)
+            if selected_refseq == "auto":
+                selected_refseq = detected
+            else:
+                selected_refseq = normalize_assembly(selected_refseq)
+                if detected and selected_refseq != detected:
+                    raise ValueError(
+                        f"Requested RefSeq {selected_refseq} does not match the BAM's "
+                        f"detected {detected} assembly."
+                    )
+            if selected_refseq:
+                refseq_path = ensure_refseq(selected_refseq, args.refseq_dir)
+                annotation_sources.insert(0, AnnotationSource(
+                    str(refseq_path), label=REFSEQ_LABELS[selected_refseq], kind="gff",
+                    display_mode=args.track_display,
+                    primary_isoforms=args.primary_isoforms,
+                    track_colors=visual_config["track_colors"],
+                ))
+                log.info("Loaded default gene track: %s", REFSEQ_LABELS[selected_refseq])
+            else:
+                log.warning(
+                    "Could not identify hg19/GRCh37 or hg38/GRCh38 from BAM contig "
+                    "lengths; the default RefSeq track was not loaded."
+                )
+        except (OSError, ValueError) as exc:
+            log.error(str(exc))
+            return 1
 
     common_kwargs = dict(
         min_mapq=args.min_mapq,
@@ -469,6 +588,7 @@ def main(argv=None) -> int:
         haplotype_tag=args.haplotype_tag,
         phase_set_tag=args.phase_set_tag,
         annotate_gap=not args.no_annotate,
+        show_indel_lengths=args.show_indel_lengths,
         fig_width=args.fig_width,
         dpi=args.dpi,
         long_gap_threshold=args.long_gap_threshold,
@@ -490,16 +610,15 @@ def main(argv=None) -> int:
         view_as_pairs=args.view_as_pairs,
     )
 
-    if args.bam2:
-        if not os.path.isfile(args.bam2):
-            log.error("Cannot find --bam2 file: %s", args.bam2)
-            return 1
+    if len(bam_paths) > 1:
         try:
             out_path, table = compare_snapshots(
-                bam1=args.bam, bam2=args.bam2, chrom=chrom, start=start, end=end,
+                bam1=bam_paths[0], bam2=bam_paths[1], chrom=chrom, start=start, end=end,
                 fasta=args.fasta, output_dir=args.output_dir, output_name=args.output_name,
                 output_format=args.output_format,
-                label1=args.label1, label2=args.label2,
+                label1=sample_labels[0], label2=sample_labels[1],
+                additional_bams=bam_paths[2:], additional_labels=sample_labels[2:],
+                companion_vcfs=companion_vcfs,
                 metrics_tsv_1=args.metrics_tsv, metrics_tsv_2=args.metrics_tsv2,
                 **common_kwargs,
             )
@@ -510,11 +629,21 @@ def main(argv=None) -> int:
         print(table)
         return 0
 
+    if companion_vcfs[0]:
+        try:
+            annotation_sources.append(AnnotationSource(
+                companion_vcfs[0], label=f"{sample_labels[0]} variants", kind="vcf",
+                display_mode="collapse", track_colors=visual_config["track_colors"],
+            ))
+        except (OSError, ValueError) as exc:
+            log.error(str(exc))
+            return 1
+
     snap = BamSnapshot(
-        bam=args.bam, chrom=chrom, start=start, end=end, fasta=args.fasta,
+        bam=bam_paths[0], chrom=chrom, start=start, end=end, fasta=args.fasta,
         output_dir=args.output_dir, output_name=args.output_name,
         output_format=args.output_format,
-        label=args.label1, mate_view=args.mate_view,
+        label=sample_labels[0], mate_view=args.mate_view,
         mate_window_source=args.mate_window_source,
         mate_window_size=args.mate_window_size,
         **common_kwargs,

@@ -19,12 +19,72 @@ from src.render import (
     IDEOGRAM_WINDOW_COLOR,
     AlignmentRenderer,
     compute_coverage,
+    compute_binned_coverage,
+    compute_feature_density,
+    compute_sparse_snv_evidence,
     compute_snv_evidence,
     compute_snv_counts,
     compute_splice_junctions,
     ellipsize,
+    genomic_tick_labels,
     haplotype_color,
 )
+
+
+def test_feature_density_counts_interval_overlap_per_bin():
+    items = [
+        AnnotationItem(0, 10),
+        AnnotationItem(5, 15),
+    ]
+
+    positions, densities = compute_feature_density(items, 0, 20, 4)
+
+    assert positions == pytest.approx([2.5, 7.5, 12.5, 17.5])
+    assert densities == [1, 2, 1, 0]
+
+
+def test_peak_track_draws_signal_blocks_and_narrowpeak_summit():
+    item = AnnotationItem(100, 180, "peak", value=12.5, summit=130)
+    track = LoadedAnnotationTrack(
+        "H3K27ac", "narrowpeak", "#7b3294", [item], [[item]], "collapse"
+    )
+    renderer = AlignmentRenderer()
+    fig, ax = plt.subplots()
+
+    renderer.draw_annotation_track(ax, track, 90, 200)
+
+    assert len(ax.patches) == 1
+    assert ax.patches[0].get_height() == pytest.approx(12.5)
+    assert any(130 in line.get_xdata() for line in ax.lines)
+    assert ax.get_ylabel() == "signal"
+    plt.close(fig)
+
+
+def test_density_track_draws_compact_filled_histogram():
+    items = [AnnotationItem(100, 150), AnnotationItem(125, 175)]
+    track = LoadedAnnotationTrack(
+        "DNase", "narrowpeak", "#2c7fb8", items, [items], "density"
+    )
+    renderer = AlignmentRenderer()
+    fig, ax = plt.subplots()
+
+    renderer.draw_annotation_track(ax, track, 90, 190)
+
+    assert len(ax.collections) == 1
+    assert ax.get_ylabel() == "features/bin"
+    assert any(text.get_text() == "density" for text in ax.texts)
+    plt.close(fig)
+
+
+def test_annotation_height_override_wins_over_type_default():
+    item = AnnotationItem(100, 150)
+    track = LoadedAnnotationTrack(
+        "Custom", "bed", "#000000", [item], [[item]], height_in=0.72
+    )
+    renderer = AlignmentRenderer()
+
+    assert renderer.annotation_track_height(track) == pytest.approx(0.72)
+    assert renderer.styles["coverage_track_height_in"] == pytest.approx(1.40)
 
 
 def test_compute_coverage_counts_match_blocks_but_not_deletions():
@@ -37,6 +97,18 @@ def test_compute_coverage_counts_match_blocks_but_not_deletions():
         SimpleNamespace(blocks=[CigarBlock("M", 101, 0, 5)]),
     ]
     assert compute_coverage(reads, 100, 107) == [1, 2, 2, 1, 1, 2, 1]
+
+
+def test_binned_coverage_returns_mean_depth_without_per_base_output():
+    reads = [
+        SimpleNamespace(blocks=[CigarBlock("M", 0, 0, 4)]),
+        SimpleNamespace(blocks=[CigarBlock("M", 2, 0, 6)]),
+    ]
+
+    edges, depth = compute_binned_coverage(reads, 0, 10, 2)
+
+    assert edges == pytest.approx([0, 5, 10])
+    assert depth == pytest.approx([1.4, 0.6])
 
 
 def test_coverage_colors_only_snvs_above_vaf_threshold():
@@ -101,16 +173,142 @@ def test_snv_evidence_applies_quality_filters_and_tracks_strand_means():
     assert allele.base_quality_sum / allele.count == 30
     assert allele.mapq_sum / allele.count == 50
 
+    sparse_depth, sparse_evidence = compute_sparse_snv_evidence(
+        reads, 100, 101, min_baseq=20, min_mapq=30
+    )
+    sparse_allele = sparse_evidence[100]["G"]
+    assert sparse_depth == {100: 2}
+    assert (sparse_allele.count, sparse_allele.forward, sparse_allele.reverse) == (2, 1, 1)
+
+
+def test_wide_coverage_uses_binned_single_artist():
+    read = SimpleNamespace(
+        blocks=[CigarBlock("M", 100, 0, 150)],
+        mismatches=[], mismatch_details=[], query_sequence="A" * 150,
+        query_qualities=[35] * 150, mapq=60, is_reverse=False,
+    )
+    renderer = AlignmentRenderer()
+    fig, ax = plt.subplots(figsize=(6, 1), dpi=100)
+
+    renderer.draw_coverage_track(ax, [read], 0, 100_000)
+
+    assert len(ax.patches) == 1
+    assert len(ax.patches[0].get_path().vertices) < 2_000
+    assert any(text.get_text().endswith("bp/bin (mean)") for text in ax.texts)
+    plt.close(fig)
+
 
 def test_squish_rows_are_shorter_than_expanded_rows():
     expanded = AlignmentRenderer(display_mode="expand")
     squished = AlignmentRenderer(display_mode="squish")
     assert squished.row_height_in < expanded.row_height_in
+    assert squished.row_height_in <= expanded.row_height_in / 4
+    assert squished.row_margin < expanded.row_margin
+    assert squished.styles["squish_alignment_edge_width"] == 0
+
+
+def test_squish_reads_hide_outlines_and_per_read_event_labels():
+    renderer = AlignmentRenderer(display_mode="squish", shade_by_mapq=False)
+    read = SimpleNamespace(
+        ref_start=100, ref_end=125, pair_category="normal", mate_chrom="chr1",
+        is_secondary=False, is_duplicate=False, mapq=60,
+        blocks=[
+            CigarBlock("M", 100, 0, 10),
+            CigarBlock("D", 110, 10, 5),
+            CigarBlock("I", 115, 10, 4),
+            CigarBlock("M", 115, 14, 10),
+        ],
+        mismatches=[], query_sequence="A" * 24,
+    )
+    fig, ax = plt.subplots()
+
+    renderer.draw_read(ax, read, y0=0.08, h=0.84, render_base_detail=False)
+
+    assert all(patch.get_linewidth() == 0 for patch in ax.patches)
+    assert not ax.texts
+    plt.close(fig)
+
+
+def test_expanded_reads_have_no_outline_by_default():
+    renderer = AlignmentRenderer(display_mode="expand", shade_by_mapq=False)
+    read = SimpleNamespace(
+        ref_start=100, ref_end=120, pair_category="normal", mate_chrom="chr1",
+        is_secondary=False, is_duplicate=False, mapq=60,
+        blocks=[CigarBlock("M", 100, 0, 20)],
+        mismatches=[], query_sequence="A" * 20,
+    )
+    fig, ax = plt.subplots()
+
+    renderer.draw_read(ax, read, y0=0.1, h=0.8, render_base_detail=False)
+
+    assert len(ax.patches) == 1
+    assert ax.patches[0].get_linewidth() == 0
+    assert to_hex(ax.patches[0].get_facecolor()) == renderer.alignment_colors["normal"]
+    plt.close(fig)
+
+
+def test_indel_length_labels_are_opt_in():
+    read = SimpleNamespace(
+        ref_start=100, ref_end=125, pair_category="normal", mate_chrom="chr1",
+        is_secondary=False, is_duplicate=False, mapq=60,
+        blocks=[
+            CigarBlock("M", 100, 0, 10),
+            CigarBlock("D", 110, 10, 5),
+            CigarBlock("I", 115, 10, 4),
+            CigarBlock("M", 115, 14, 10),
+        ],
+        mismatches=[], query_sequence="A" * 24,
+    )
+    fig, (default_ax, labelled_ax) = plt.subplots(nrows=2)
+
+    AlignmentRenderer(shade_by_mapq=False).draw_read(
+        default_ax, read, y0=0.1, h=0.8, render_base_detail=False
+    )
+    AlignmentRenderer(
+        shade_by_mapq=False, show_indel_lengths=True
+    ).draw_read(
+        labelled_ax, read, y0=0.1, h=0.8, render_base_detail=False
+    )
+
+    assert not default_ax.texts
+    assert [text.get_text() for text in labelled_ax.texts] == ["5", "+4"]
+    plt.close(fig)
 
 
 def test_long_labels_are_ellipsized_to_the_available_lane():
     assert ellipsize("Candidate regions", 10) == "Candidate…"
     assert ellipsize("short", 10) == "short"
+
+
+@pytest.mark.parametrize(
+    "ticks, window_length, expected_labels, expected_unit",
+    [
+        (
+            [101_867_480, 101_867_500, 101_867_520], 140,
+            ["101,867,480", "101,867,500", "101,867,520"], "bp",
+        ),
+        (
+            [101_860_000, 101_865_000, 101_870_000], 20_000,
+            ["101,860", "101,865", "101,870"], "kb",
+        ),
+        (
+            [101_000_000, 101_200_000, 101_400_000], 1_400_000,
+            ["101.0", "101.2", "101.4"], "Mb",
+        ),
+        (
+            [3_000_000_000, 3_100_000_000], 1_100_000_000,
+            ["3.0", "3.1"], "Gb",
+        ),
+    ],
+)
+def test_genomic_ticks_use_explicit_units_not_exponents(
+    ticks, window_length, expected_labels, expected_unit,
+):
+    labels, unit = genomic_tick_labels(ticks, window_length)
+
+    assert labels == expected_labels
+    assert unit == expected_unit
+    assert not any("e" in label.lower() for label in labels)
 
 
 def test_legend_clusters_related_terms_by_topic():
@@ -119,15 +317,23 @@ def test_legend_clusters_related_terms_by_topic():
     legends = renderer.draw_legends(fig, fig_height=2)
 
     assert [legend.get_title().get_text() for legend in legends] == [
-        "Alignment events", "Pair evidence", "Base identity",
+        "Alignment", "Read events", "Insert size", "Pair geometry", "Base identity",
     ]
     assert [text.get_text() for text in legends[0].get_texts()] == [
-        "Normal / concordant", "Insertion", "Deletion",
+        "Normal / concordant",
     ]
-    assert [text.get_text() for text in legends[2].get_texts()] == list("ACGT")
+    assert [text.get_text() for text in legends[1].get_texts()] == [
+        "Insertion", "Deletion",
+    ]
+    assert [text.get_text() for text in legends[4].get_texts()] == list("ACGT")
     legend_ax = fig.axes[-1]
-    assert len(legend_ax.patches) == 2  # alternating compartment fill + outer rail
-    assert len(legend_ax.lines) == 2  # internal compartment dividers
+    assert len(legend_ax.patches) == 5
+    assert len(legend_ax.lines) == 0
+    bounds = []
+    for patch in legend_ax.patches:
+        bounds.append((patch.get_x(), patch.get_x() + patch.get_width()))
+    for left, right in zip(bounds, bounds[1:]):
+        assert left[1] < right[0]
     plt.close(fig)
 
 
@@ -144,9 +350,9 @@ def test_haplotype_view_colours_reads_and_replaces_pair_legend_compartment():
     fig = plt.figure(figsize=(14, 2))
     legends = renderer.draw_legends(fig, fig_height=2)
     assert [legend.get_title().get_text() for legend in legends] == [
-        "Alignment events", "Haplotype", "Base identity",
+        "Alignment", "Read events", "Haplotype", "Base identity",
     ]
-    assert [text.get_text() for text in legends[1].get_texts()] == [
+    assert [text.get_text() for text in legends[2].get_texts()] == [
         "HP 1", "HP 2", "Other HP", "Untagged",
     ]
     plt.close(fig)
@@ -351,10 +557,12 @@ def test_ideogram_draws_cytobands_and_centromere():
     plt.close(fig)
 
 
-def test_gene_track_repeats_orientation_arrows_across_introns():
+@pytest.mark.parametrize("strand, marker", [("+", ">"), ("-", "<")])
+def test_every_gene_intron_has_strand_orientation_arrow(strand, marker):
     renderer = AlignmentRenderer()
     item = AnnotationItem(
-        100, 200, "TX1", "+", blocks=[(100, 120), (180, 200)]
+        90, 210, "TX1", strand,
+        blocks=[(100, 120), (180, 190), (191, 200)],
     )
     track = LoadedAnnotationTrack("Genes", "gtf", "#17217a", [item], [[item]])
     fig, ax = plt.subplots(figsize=(8, 1))
@@ -362,8 +570,16 @@ def test_gene_track_repeats_orientation_arrows_across_introns():
 
     renderer.draw_annotation_track(ax, track, 90, 210)
 
-    assert sum(line.get_marker() == ">" for line in ax.lines) > 1
-    assert not any(line.get_marker() == "<" for line in ax.lines)
+    arrow_positions = []
+    for line in ax.lines:
+        if line.get_marker() == marker:
+            arrow_positions.append(line.get_xdata()[0])
+    assert any(90 < position < 100 for position in arrow_positions)
+    assert any(120 < position < 180 for position in arrow_positions)
+    assert any(190 < position < 191 for position in arrow_positions)
+    assert any(200 < position < 210 for position in arrow_positions)
+    opposite_marker = "<" if marker == ">" else ">"
+    assert not any(line.get_marker() == opposite_marker for line in ax.lines)
     plt.close(fig)
 
 

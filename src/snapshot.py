@@ -119,6 +119,7 @@ class BamSnapshot:
         min_baseq: int = 0,
         min_variant_mapq: int = 0,
         show_variant_counts: bool = False,
+        show_indel_lengths: bool = False,
         haplotype_view: str = "none",
         haplotype_filter: Optional[List[str]] = None,
         haplotype_tag: str = "HP",
@@ -175,6 +176,7 @@ class BamSnapshot:
         self.min_baseq = min_baseq
         self.min_variant_mapq = min_variant_mapq
         self.show_variant_counts = show_variant_counts
+        self.show_indel_lengths = show_indel_lengths
         self.haplotype_view = haplotype_view
         self.haplotype_filter = list(haplotype_filter or [])
         self.haplotype_tag = haplotype_tag
@@ -283,6 +285,7 @@ class BamSnapshot:
             min_baseq=self.min_baseq,
             min_variant_mapq=self.min_variant_mapq,
             show_variant_counts=self.show_variant_counts,
+            show_indel_lengths=self.show_indel_lengths,
             haplotype_view=self.haplotype_view,
             sort_base_position=base_position if self.sort_by == "base" else None,
             sort_reference_base=reference_base,
@@ -491,17 +494,35 @@ def compare_snapshots(
     min_baseq: int = 0,
     min_variant_mapq: int = 0,
     show_variant_counts: bool = False,
+    show_indel_lengths: bool = False,
     haplotype_view: str = "none",
     haplotype_filter: Optional[List[str]] = None,
     haplotype_tag: str = "HP",
     phase_set_tag: str = "PS",
     output_format: Optional[str] = None,
+    additional_bams: Optional[List[str]] = None,
+    additional_labels: Optional[List[str]] = None,
+    companion_vcfs: Optional[List[Optional[str]]] = None,
 ) -> tuple[str, str]:
-    """Renders both BAMs stacked in one image, sharing a genomic x-axis, and
-    returns a plain-text comparison table (also handy to print/log)."""
+    """Render two or more BAMs as sample panels sharing one genomic x-axis."""
     os.makedirs(output_dir, exist_ok=True)
-    label1 = label1 or Path(bam1).stem
-    label2 = label2 or Path(bam2).stem
+    bam_paths = [bam1, bam2]
+    bam_paths.extend(additional_bams or [])
+    labels = [label1 or Path(bam1).stem, label2 or Path(bam2).stem]
+    extra_labels = list(additional_labels or [])
+    if len(extra_labels) > len(bam_paths) - 2:
+        raise ValueError("More additional labels were supplied than additional BAMs.")
+    for index, bam_path in enumerate(bam_paths[2:]):
+        label = extra_labels[index] if index < len(extra_labels) else None
+        labels.append(label or Path(bam_path).stem)
+    tsv_paths = [metrics_tsv_1, metrics_tsv_2]
+    while len(tsv_paths) < len(bam_paths):
+        tsv_paths.append(None)
+    companions = list(companion_vcfs or [])
+    if companions and len(companions) != len(bam_paths):
+        raise ValueError("Exactly one VCF companion is required per BAM panel.")
+    if not companions:
+        companions = [None] * len(bam_paths)
 
     reference = ReferenceWindow(fasta, chrom, start, end)
     base_position = sort_base_position
@@ -522,7 +543,9 @@ def compare_snapshots(
 
     panels = []
     summaries = []
-    for bam_path, label, tsv_path in ((bam1, label1, metrics_tsv_1), (bam2, label2, metrics_tsv_2)):
+    for panel_index, bam_path in enumerate(bam_paths):
+        label = labels[panel_index]
+        tsv_path = tsv_paths[panel_index]
         reads = fetch_reads(
             bam_path, chrom, start, end, reference=reference, min_mapq=min_mapq,
             include_secondary=include_secondary, include_supplementary=include_supplementary,
@@ -558,6 +581,17 @@ def compare_snapshots(
         summaries.append(summary)
         if tsv_path:
             write_tsv(reads, tsv_path)
+        companion_tracks = []
+        companion_path = companions[panel_index]
+        if companion_path:
+            theme_track_colors = None
+            if visual_config:
+                theme_track_colors = visual_config.get("track_colors")
+            companion_source = AnnotationSource(
+                companion_path, label=f"{label} variants", kind="vcf",
+                display_mode="collapse", track_colors=theme_track_colors,
+            )
+            companion_tracks.append(companion_source.fetch(chrom, start, end))
         panels.append({
             "label": f"{label}  (n={len(reads)}, gapped={summary.n_gapped}, max_gap={summary.max_gap}bp)",
             "rows": rows,
@@ -565,6 +599,7 @@ def compare_snapshots(
             "layout": layout,
             "dropped_reads": dropped,
             "downsampled_reads": downsampled,
+            "companion_tracks": companion_tracks,
         })
 
     out_path = resolve_output_path(
@@ -584,6 +619,7 @@ def compare_snapshots(
         min_baseq=min_baseq,
         min_variant_mapq=min_variant_mapq,
         show_variant_counts=show_variant_counts,
+        show_indel_lengths=show_indel_lengths,
         haplotype_view=haplotype_view,
         sort_base_position=base_position if sort_by == "base" else None,
         sort_reference_base=reference_base,

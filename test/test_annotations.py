@@ -29,6 +29,9 @@ def test_format_inference_handles_plain_and_compressed_names():
     assert infer_track_format("bins.bedgraph.gz") == "bedgraph"
     assert infer_track_format("ratios.bdg") == "bedgraph"
     assert infer_track_format("sample.log2") == "log2"
+    assert infer_track_format("H3K27ac.narrowPeak.gz") == "narrowpeak"
+    assert infer_track_format("H3K27me3.broadPeak") == "broadpeak"
+    assert infer_track_format("DNase.signal.bgz") == "signal"
     with pytest.raises(ValueError, match="Cannot infer"):
         infer_track_format("track.txt")
 
@@ -137,6 +140,140 @@ def test_custom_track_accepts_per_track_display_override(tmp_path):
     assert len(track.rows) == 2
 
 
+def test_custom_track_accepts_per_track_height_override(tmp_path):
+    track_file = tmp_path / "regions.data"
+    track_file.write_text("chr1\t10\t20\tregion\n", encoding="utf-8")
+    specification = f"{track_file},bed,Regions,rgb(12,34,56),pack,0.65"
+
+    source = build_custom_annotation_sources([[specification]])[0]
+    track = source.fetch("chr1", 0, 30)
+
+    assert source.height_in == pytest.approx(0.65)
+    assert track.height_in == pytest.approx(0.65)
+
+
+@pytest.mark.parametrize("height", ["0", "-1", "large"])
+def test_custom_track_rejects_invalid_height(tmp_path, height):
+    track_file = tmp_path / "regions.data"
+    track_file.write_text("chr1\t10\t20\tregion\n", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="HEIGHT_IN"):
+        build_custom_annotation_sources([[
+            str(track_file), "bed", "Regions", "#000000", "pack", height,
+        ]])
+
+
+def test_narrowpeak_preserves_signal_and_summit(tmp_path):
+    peak_file = tmp_path / "H3K27ac.narrowPeak"
+    peak_file.write_text(
+        "chr1\t100\t180\tpeak-1\t500\t.\t12.5\t8\t7\t30\n"
+        "chr1\t190\t240\tpeak-2\t250\t.\t-1\t4\t3\t-1\n",
+        encoding="utf-8",
+    )
+
+    track = AnnotationSource(str(peak_file), display_mode="collapse").fetch(
+        "chr1", 90, 250
+    )
+
+    assert track.kind == "narrowpeak"
+    assert track.items[0].value == pytest.approx(12.5)
+    assert track.items[0].summit == 130
+    assert track.items[1].value == pytest.approx(250)
+    assert track.items[1].summit is None
+
+
+def test_broadpeak_and_signal_tracks_use_quantitative_rows(tmp_path):
+    broad_file = tmp_path / "H3K27me3.broadPeak"
+    signal_file = tmp_path / "DNase.signal"
+    broad_file.write_text(
+        "chr1\t100\t220\tbroad-1\t400\t.\t18.0\t6\t5\n",
+        encoding="utf-8",
+    )
+    signal_file.write_text("chr1\t100\t120\t3.5\n", encoding="utf-8")
+
+    broad = AnnotationSource(str(broad_file)).fetch("chr1", 90, 230)
+    signal = AnnotationSource(str(signal_file)).fetch("chr1", 90, 130)
+
+    assert broad.kind == "broadpeak"
+    assert broad.items[0].summit is None
+    assert broad.items[0].value == pytest.approx(18.0)
+    assert signal.kind == "signal"
+    assert signal.items[0].value == pytest.approx(3.5)
+
+
+def test_epigenomic_signal_rejects_negative_cnv_values(tmp_path):
+    signal_file = tmp_path / "signed.signal"
+    signal_file.write_text("chr1\t100\t120\t-0.5\n", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="require non-negative"):
+        AnnotationSource(str(signal_file)).fetch("chr1", 90, 130)
+
+
+def test_peak_density_display_is_accepted(tmp_path):
+    peak_file = tmp_path / "DNase.narrowPeak"
+    peak_file.write_text(
+        "chr1\t100\t150\ta\t100\t.\t5\t3\t2\t20\n",
+        encoding="utf-8",
+    )
+
+    source = AnnotationSource(str(peak_file), display_mode="density")
+    track = source.fetch("chr1", 90, 160)
+
+    assert source.display_mode == "density"
+    assert track.display_mode == "density"
+    assert len(track.rows) == 1
+
+
+def test_bgzip_narrowpeak_is_fetched_with_tabix(tmp_path):
+    plain = tmp_path / "DNase.narrowPeak"
+    compressed = tmp_path / "DNase.narrowPeak.gz"
+    plain.write_text(
+        "chr1\t100\t150\tinside\t100\t.\t5\t3\t2\t20\n"
+        "chr1\t300\t350\toutside\t100\t.\t6\t3\t2\t25\n",
+        encoding="utf-8",
+    )
+    pysam.tabix_compress(str(plain), str(compressed), force=True)
+    pysam.tabix_index(str(compressed), preset="bed", force=True)
+
+    source = AnnotationSource(str(compressed))
+    track = source.fetch("chr1", 90, 160)
+
+    assert source.compressed
+    assert track.kind == "narrowpeak"
+    assert track.items[0].name == "inside"
+    assert track.items[0].summit == 120
+
+
+def test_custom_track_accepts_one_comma_separated_argument(tmp_path):
+    track_file = tmp_path / "regions.data"
+    track_file.write_text("chr1\t10\t20\tregion\n", encoding="utf-8")
+    specification = f'{track_file},bed,"Candidate, somatic regions",#123456,collapse'
+
+    source = build_custom_annotation_sources([[specification]])[0]
+    track = source.fetch("chr1", 0, 30)
+
+    assert source.display_mode == "collapse"
+    assert track.label == "Candidate, somatic regions"
+    assert track.color == "#123456"
+
+
+@pytest.mark.parametrize("color", ["12,34,56", "rgb(12,34,56)"])
+def test_comma_separated_custom_track_preserves_rgb_colour(tmp_path, color):
+    track_file = tmp_path / "regions.data"
+    track_file.write_text("chr1\t10\t20\tregion\n", encoding="utf-8")
+    specification = f"{track_file},bed,Regions,{color},expand"
+
+    source = build_custom_annotation_sources([[specification]])[0]
+
+    assert source.color == "#0c2238"
+    assert source.display_mode == "expand"
+
+
+def test_comma_separated_custom_track_rejects_missing_fields(tmp_path):
+    with pytest.raises(ValueError, match="requires one CSV value"):
+        build_custom_annotation_sources([[f"{tmp_path}/regions.bed,bed,Regions"]])
+
+
 def test_gene_track_collapse_pack_and_expand_transcript_isoforms(tmp_path):
     gtf = tmp_path / "isoforms.gtf"
     gtf.write_text(
@@ -162,6 +299,29 @@ def test_gene_track_collapse_pack_and_expand_transcript_isoforms(tmp_path):
     assert len(expanded.rows) == 2
     assert all(len(row) == 1 for row in expanded.rows)
     assert [row[0].transcript_label for row in expanded.rows] == ["tx1", "tx2"]
+
+
+def test_ncbi_gff_cds_parent_merges_with_refseq_transcript(tmp_path):
+    gff = tmp_path / "refseq.gff"
+    gff.write_text(
+        "##gff-version 3\n"
+        "chr1\tBestRefSeq\tgene\t101\t250\t.\t+\t.\tID=gene-G1;Name=GENE1;gene=GENE1\n"
+        "chr1\tBestRefSeq\tmRNA\t101\t250\t.\t+\t.\tID=rna-NM_1.2;Parent=gene-G1;"
+        "Name=NM_1.2;gene=GENE1;transcript_id=NM_1.2;tag=RefSeq Select\n"
+        "chr1\tBestRefSeq\texon\t101\t250\t.\t+\t.\tParent=rna-NM_1.2;"
+        "gene=GENE1;transcript_id=NM_1.2\n"
+        "chr1\tBestRefSeq\tCDS\t151\t220\t.\t+\t0\tID=cds-NP_1.1;"
+        "Parent=rna-NM_1.2;Name=NP_1.1;gene=GENE1;protein_id=NP_1.1\n",
+        encoding="utf-8",
+    )
+
+    track = AnnotationSource(str(gff), display_mode="expand").fetch("chr1", 90, 260)
+
+    assert len(track.items) == 1
+    assert track.items[0].transcript_label == "NM_1.2"
+    assert track.items[0].group_label == "GENE1"
+    assert track.items[0].blocks == [(150, 220)]
+    assert track.items[0].primary_label == "RefSeq Select"
 
 
 def test_primary_isoform_selection_uses_marker_priority_and_gene_fallback(tmp_path):
