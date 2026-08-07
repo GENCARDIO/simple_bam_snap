@@ -15,15 +15,15 @@ from typing import Any, Dict, List, Optional
 
 import pysam
 
-from src.annotations import AnnotationSource
-from src.cytobands import Cytoband, bands_for_chrom, resolve_cytobands
-from src.downsample import DEFAULT_MAX_ALIGNMENT_DEPTH, downsample_reads
-from src.layout import build_rows, infer_reference_base, truncate_rows
-from src.mate_window import MateWindow, choose_mate_window, supporting_query_names
-from src.metrics import RegionSummary, format_summary_table, summarize, write_tsv
-from src.read_model import AlignedRead, fetch_reads, matches_only
-from src.reference import ReferenceWindow
-from src.render import (
+from locus_snap.annotations import AnnotationSource
+from locus_snap.cytobands import Cytoband, bands_for_chrom, resolve_cytobands
+from locus_snap.downsample import DEFAULT_MAX_ALIGNMENT_DEPTH, downsample_reads
+from locus_snap.layout import build_rows, infer_reference_base, truncate_rows
+from locus_snap.mate_window import MateWindow, choose_mate_window, supporting_query_names
+from locus_snap.metrics import RegionSummary, format_summary_table, summarize, write_tsv
+from locus_snap.read_model import AlignedRead, fetch_reads, matches_only
+from locus_snap.reference import ReferenceWindow
+from locus_snap.render import (
     AlignmentRenderer,
     DEFAULT_COVERAGE_VAF_THRESHOLD,
     DEFAULT_MAX_REFERENCE_SPAN,

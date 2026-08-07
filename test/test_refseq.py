@@ -7,7 +7,7 @@ import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from src.refseq import detect_human_assembly, ensure_refseq, normalize_assembly
+from locus_snap.refseq import detect_human_assembly, ensure_refseq, normalize_assembly
 
 
 def test_detects_supported_human_assemblies_from_exact_contig_lengths():

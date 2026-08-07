@@ -26,7 +26,7 @@ from functools import partial
 from operator import attrgetter
 from typing import Callable, List, Optional, Tuple
 
-from src.read_model import AlignedRead
+from locus_snap.read_model import AlignedRead
 
 SortKeyFunc = Callable[[AlignedRead], object]
 

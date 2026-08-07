@@ -1,4 +1,7 @@
 __pycache__/
 *.pyc
 .pytest_cache/
-data/ucsc/refseq/
+locus_snap/data/ucsc/refseq/
+build/
+dist/
+*.egg-info/

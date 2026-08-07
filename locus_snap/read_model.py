@@ -25,7 +25,7 @@ from typing import List, Optional, Tuple
 
 import pysam
 
-from src.reference import ReferenceWindow
+from locus_snap.reference import ReferenceWindow
 
 CIGAR_OPS = {0: "M", 1: "I", 2: "D", 3: "N", 4: "S", 5: "H", 6: "P", 7: "=", 8: "X"}
 REF_CONSUMING = ("M", "D", "N", "=", "X")

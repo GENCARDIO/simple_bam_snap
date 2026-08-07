@@ -14,12 +14,12 @@ from urllib.request import Request, urlopen
 
 import pysam
 
-from src.cytobands import resolve_cytobands
+from locus_snap.cytobands import resolve_cytobands
 
 
 log = logging.getLogger("locus_snap.refseq")
 
-DEFAULT_REFSEQ_DIR = Path(__file__).resolve().parent.parent / "data" / "ucsc" / "refseq"
+DEFAULT_REFSEQ_DIR = Path(__file__).resolve().parent / "data" / "ucsc" / "refseq"
 REFSEQ_SOURCES = {
     "hg19": {
         "annotation": (

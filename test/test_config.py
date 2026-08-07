@@ -8,14 +8,15 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from locus_snap import apply_config_preferences, build_parser
 import simple_bam_snap as legacy_cli
-from src.config import (
+from locus_snap.config import (
     DEFAULT_ALIGNMENT_COLORS,
+    DEFAULT_BASE_COLORS,
     DEFAULT_CHROMOSOME_COLORS,
     DEFAULT_INSERTION_COLOR,
     load_alignment_colors,
     load_config,
 )
-from src.render import AlignmentRenderer, chrom_color
+from locus_snap.render import AlignmentRenderer, chrom_color
 
 
 def test_legacy_cli_reexports_locus_snap_parser():
@@ -75,6 +76,16 @@ def test_default_small_insert_colour_matches_cigar_insertions():
 def test_default_same_strand_pair_colours_match_igv():
     assert DEFAULT_ALIGNMENT_COLORS["ff"] == "#009696"
     assert DEFAULT_ALIGNMENT_COLORS["rr"] == "#1432c8"
+
+
+def test_default_variant_base_colours_match_igv():
+    assert DEFAULT_BASE_COLORS == {
+        "A": "#00ff00",
+        "C": "#0000ff",
+        "G": "#d17105",
+        "T": "#ff0000",
+        "N": "#898781",
+    }
 
 
 def test_interchrom_colours_match_igv_mate_chromosome_table():

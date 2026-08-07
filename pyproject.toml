@@ -1,0 +1,46 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "locus-snap"
+version = "0.1.0"
+description = "Render IGV-like genomic snapshots from an indexed BAM without opening a genome browser."
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.9"
+authors = [{ name = "bdolmo" }]
+keywords = ["bioinformatics", "genomics", "bam", "igv", "sequencing", "visualization"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: POSIX",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Topic :: Scientific/Engineering :: Bio-Informatics",
+    "Topic :: Scientific/Engineering :: Visualization",
+]
+dependencies = [
+    "pysam>=0.20",
+    "matplotlib>=3.5",
+    "PyYAML>=6.0",
+]
+
+[project.optional-dependencies]
+test = ["pytest>=7.0"]
+
+[project.scripts]
+locus-snap = "locus_snap.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/GENCARDIO/simple_bam_snap"
+Repository = "https://github.com/GENCARDIO/simple_bam_snap"
+Issues = "https://github.com/GENCARDIO/simple_bam_snap/issues"
+
+[tool.setuptools.packages.find]
+include = ["locus_snap*"]
+
+[tool.setuptools.package-data]
+locus_snap = ["data/ucsc/*.gz", "data/ucsc/README.md"]

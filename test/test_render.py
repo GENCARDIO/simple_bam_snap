@@ -9,11 +9,11 @@ from matplotlib.patches import Polygon
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from src.annotations import AnnotationItem, LoadedAnnotationTrack
-from src.config import DEFAULT_BASE_COLORS, DEFAULT_VISUAL_COLORS, load_config
-from src.cytobands import Cytoband
-from src.read_model import CigarBlock
-from src.render import (
+from locus_snap.annotations import AnnotationItem, LoadedAnnotationTrack
+from locus_snap.config import DEFAULT_BASE_COLORS, DEFAULT_VISUAL_COLORS, load_config
+from locus_snap.cytobands import Cytoband
+from locus_snap.read_model import CigarBlock
+from locus_snap.render import (
     AlignmentRenderer,
     compute_coverage,
     compute_binned_coverage,

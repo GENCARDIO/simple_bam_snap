@@ -3,7 +3,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from src.cytobands import bands_for_chrom, load_cytobands, resolve_cytobands
+from locus_snap.cytobands import bands_for_chrom, load_cytobands, resolve_cytobands
 
 
 def test_loads_ucsc_cytoband_format_and_resolves_chr_alias(tmp_path):

@@ -20,23 +20,23 @@ from matplotlib.patches import Patch, PathPatch, Polygon, Rectangle
 from matplotlib.path import Path
 from matplotlib.ticker import MaxNLocator
 
-from src.annotations import (
+from locus_snap.annotations import (
     BAF_TRACK_FORMATS,
     CNV_TRACK_FORMATS,
     PEAK_TRACK_FORMATS,
     SIGNAL_TRACK_FORMATS,
     LoadedAnnotationTrack,
 )
-from src.config import (
+from locus_snap.config import (
     DEFAULT_CHROMOSOME_COLORS,
     DEFAULT_CHROMOSOME_PALETTE,
     DEFAULT_HAPLOTYPE_COLORS,
     DEFAULT_VISUAL_COLORS,
     load_config,
 )
-from src.cytobands import Cytoband
-from src.read_model import AlignedRead
-from src.reference import ReferenceWindow
+from locus_snap.cytobands import Cytoband
+from locus_snap.read_model import AlignedRead
+from locus_snap.reference import ReferenceWindow
 
 DEFAULT_COVERAGE_VAF_THRESHOLD = 0.20
 DEFAULT_MAX_REFERENCE_SPAN = 250

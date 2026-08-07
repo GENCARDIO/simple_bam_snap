@@ -6,10 +6,10 @@ import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from src.mate_window import choose_mate_window, mate_candidates, supporting_query_names
-from src.annotations import AnnotationSource
-from src.read_model import SAEntry
-from src.snapshot import BamSnapshot
+from locus_snap.mate_window import choose_mate_window, mate_candidates, supporting_query_names
+from locus_snap.annotations import AnnotationSource
+from locus_snap.read_model import SAEntry
+from locus_snap.snapshot import BamSnapshot
 
 TEST_BAM = os.path.join(os.path.dirname(__file__), "test.bam")
 

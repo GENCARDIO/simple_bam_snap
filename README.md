@@ -4,14 +4,18 @@ Create an IGV-like image from an indexed BAM without opening a genome browser.
 
 First version of this tool was extremely simple. Now, and aided by codex, it provides a fair amount of features (might rename the tool probably).
 
+## Install
+
+```bash
+pip install locus-snap
+```
+
+This installs the `locus-snap` command and the `locus_snap` package.
+
 ## Basic usage
 
 ```bash
-git clone https://github.com/GENCARDIO/simple_bam_snap.git LocusSnap
-cd LocusSnap
-pip3 install -r requirements.txt
-
-python3 locus_snap.py \
+locus-snap \
   --bam sample.bam \
   --region chr9:101867481-101867620 \
   --output_dir out \
@@ -19,6 +23,20 @@ python3 locus_snap.py \
 ```
 
 The result is `out/locus.png`.
+
+### Run from a source checkout
+
+```bash
+git clone https://github.com/GENCARDIO/simple_bam_snap.git LocusSnap
+cd LocusSnap
+pip3 install -e .
+
+python3 -m locus_snap \
+  --bam sample.bam \
+  --region chr9:101867481-101867620 \
+  --output_dir out \
+  --output_name locus
+```
 
 The former `python3 simple_bam_snap.py ...` command remains available as a
 compatibility launcher.
@@ -156,7 +174,7 @@ independent.
 Reference bases are shown automatically for windows up to 250 bp.
 
 ```bash
-python3 locus_snap.py \
+locus-snap \
   --bam sample.bam \
   --fasta reference.fa \
   --region chr1:100001-100140 \
@@ -169,7 +187,7 @@ row while keeping FASTA-backed mismatch detection.
 ### High-depth region
 
 ```bash
-python3 locus_snap.py \
+locus-snap \
   --bam deep.bam \
   --region chr1:100000-110000 \
   --display_mode squish \
@@ -185,7 +203,7 @@ downsampled. Use `--max_alignment_depth 0` to disable downsampling or
 ### View paired alignments
 
 ```bash
-python3 locus_snap.py \
+locus-snap \
   --bam sample.bam \
   --region chr9:101867481-101867620 \
   --view_as_pairs \
@@ -200,7 +218,7 @@ alignments.
 ### Two-panel breakpoint or translocation view
 
 ```bash
-python3 locus_snap.py \
+locus-snap \
   --bam tumour.bam \
   --region chr3:187721000-187721500 \
   --mate_view \
@@ -222,7 +240,7 @@ the panel is centered on the mean candidate position. Set its width with
 ### Sort reads carrying an SNV
 
 ```bash
-python3 locus_snap.py \
+locus-snap \
   --bam sample.bam \
   --fasta reference.fa \
   --region chr9:101867520-101867570 \
@@ -239,7 +257,7 @@ the most frequent observed base is used as the local reference.
 ### Show SNV allele fractions in coverage
 
 ```bash
-python3 locus_snap.py \
+locus-snap \
   --bam sample.bam \
   --fasta reference.fa \
   --region chr1:100001-100140 \
@@ -257,7 +275,7 @@ enough room.
 ### Haplotype-aware view
 
 ```bash
-python3 locus_snap.py \
+locus-snap \
   --bam phased.bam \
   --region chr1:100001-100500 \
   --haplotype_view split \
@@ -272,7 +290,7 @@ phase-set information from `PS`. Override the tags with `--haplotype_tag` and
 ### RNA-seq sashimi view
 
 ```bash
-python3 locus_snap.py \
+locus-snap \
   --bam rnaseq.bam \
   --region chr1:100000-110000 \
   --sashimi \
@@ -288,7 +306,7 @@ counts. `combined` merges strands; `split` mirrors plus and minus junctions.
 ### Stack several BAMs and matched VCFs
 
 ```bash
-python3 locus_snap.py \
+locus-snap \
   --bam tumour.bam \
   --bam normal.bam \
   --bam relapse.bam \
@@ -310,7 +328,7 @@ VCF. Each BAM keeps its own coverage, alignments, downsampling, and summary.
 The short form is enough when the filename identifies the format:
 
 ```bash
-python3 locus_snap.py \
+locus-snap \
   --bam sample.bam \
   --region chr9:101867492-101867612 \
   --track genes.gtf.gz \
@@ -392,7 +410,7 @@ tabix -p bed H3K27ac.narrowPeak.gz
 ### ChIP-seq and accessibility
 
 ```bash
-python3 locus_snap.py \
+locus-snap \
   --bam sample.bam \
   --region chr1:100000-140000 \
   --track H3K27ac.narrowPeak.gz \
@@ -407,7 +425,7 @@ score, and narrowPeak summits are marked. Four-column `signal` files are drawn
 as one continuous filled pileup profile:
 
 ```bash
-python3 locus_snap.py \
+locus-snap \
   --bam sample.bam \
   --region chr1:100000-104000 \
   --custom_track 'control.signal.gz,signal,Control,#00695c,collapse' \
@@ -424,7 +442,7 @@ overplot.
 ### Copy number, BAF, and LOH
 
 ```bash
-python3 locus_snap.py \
+locus-snap \
   --bam tumour.bam \
   --region chr9:101000000-102000000 \
   --track tumour.seg \
@@ -528,12 +546,12 @@ PNG is the default. Use a filename extension or `--output_format`:
 
 ```bash
 # Editable vector image
-python3 locus_snap.py \
+locus-snap \
   --bam sample.bam --region chr1:100000-101000 \
   --output_name locus.svg
 
 # High-resolution PNG
-python3 locus_snap.py \
+locus-snap \
   --bam sample.bam --region chr1:100000-101000 \
   --output_name locus --output_format png --fig_width 16 --dpi 300
 ```
@@ -585,7 +603,7 @@ CIGAR insertion and deletion lengths are hidden by default. Show them with
 Run this for the full option list:
 
 ```bash
-python3 locus_snap.py --help
+locus-snap --help
 ```
 
 ## Performance: what happens on large windows

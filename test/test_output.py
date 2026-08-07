@@ -6,7 +6,7 @@ import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from src.snapshot import BamSnapshot, resolve_output_path
+from locus_snap.snapshot import BamSnapshot, resolve_output_path
 
 
 TEST_BAM = os.path.join(os.path.dirname(__file__), "test.bam")

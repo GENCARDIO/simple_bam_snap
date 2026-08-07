@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from statistics import fmean
 from typing import Iterable, List, Mapping, Optional, Tuple
 
-from src.read_model import AlignedRead
+from locus_snap.read_model import AlignedRead
 
 
 MATE_WINDOW_SOURCES = ("discordant", "split", "softclip")

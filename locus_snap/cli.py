@@ -20,7 +20,7 @@ import sys
 
 import pysam
 
-from src.annotations import (
+from locus_snap.annotations import (
     ANNOTATION_DISPLAY_MODES,
     PRIMARY_ISOFORM_MODES,
     AnnotationSource,
@@ -28,16 +28,16 @@ from src.annotations import (
     build_baf_sources,
     build_custom_annotation_sources,
 )
-from src.config import load_config
-from src.downsample import DEFAULT_MAX_ALIGNMENT_DEPTH
-from src.layout import DISPLAY_MODES, HAPLOTYPE_VIEWS, SORT_KEYS
-from src.mate_window import MATE_WINDOW_SOURCES
-from src.read_model import ONLY_TYPES
-from src.refseq import (
+from locus_snap.config import load_config
+from locus_snap.downsample import DEFAULT_MAX_ALIGNMENT_DEPTH
+from locus_snap.layout import DISPLAY_MODES, HAPLOTYPE_VIEWS, SORT_KEYS
+from locus_snap.mate_window import MATE_WINDOW_SOURCES
+from locus_snap.read_model import ONLY_TYPES
+from locus_snap.refseq import (
     REFSEQ_LABELS, detect_human_assembly, ensure_refseq, normalize_assembly,
 )
-from src.render import DEFAULT_COVERAGE_VAF_THRESHOLD, DEFAULT_MAX_REFERENCE_SPAN
-from src.snapshot import OUTPUT_FORMATS, BamSnapshot, compare_snapshots
+from locus_snap.render import DEFAULT_COVERAGE_VAF_THRESHOLD, DEFAULT_MAX_REFERENCE_SPAN
+from locus_snap.snapshot import OUTPUT_FORMATS, BamSnapshot, compare_snapshots
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 log = logging.getLogger("locus_snap")

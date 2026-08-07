@@ -5,7 +5,7 @@ import pysam
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from src.read_model import (
+from locus_snap.read_model import (
     AlignedRead,
     classify_insert_sizes,
     compute_pair_orientation,

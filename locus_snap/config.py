@@ -20,8 +20,9 @@ DEFAULT_ALIGNMENT_COLORS: Dict[str, Optional[str]] = {
     "interchrom": None,
 }
 DEFAULT_BASE_COLORS = {
-    "A": "#008300", "C": "#2a78d6", "G": "#eb6834",
-    "T": "#e34948", "N": "#898781",
+    # IGV desktop's default alignment/mismatch nucleotide colours.
+    "A": "#00ff00", "C": "#0000ff", "G": "#d17105",
+    "T": "#ff0000", "N": "#898781",
 }
 DEFAULT_TRACK_COLORS = {
     "bed": "#000000",

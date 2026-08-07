@@ -4,7 +4,7 @@ from __future__ import annotations
 import hashlib
 from typing import Iterable, List, Optional, Sequence, Set, Tuple
 
-from src.read_model import AlignedRead
+from locus_snap.read_model import AlignedRead
 
 
 DEFAULT_MAX_ALIGNMENT_DEPTH = 100

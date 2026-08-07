@@ -6,7 +6,7 @@ import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from src.downsample import downsample_reads, max_alignment_depth
+from locus_snap.downsample import downsample_reads, max_alignment_depth
 
 
 @dataclass

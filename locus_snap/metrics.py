@@ -8,7 +8,7 @@ import csv
 from dataclasses import dataclass
 from typing import List, Optional
 
-from src.read_model import AlignedRead
+from locus_snap.read_model import AlignedRead
 
 TSV_FIELDS = [
     "read_name",

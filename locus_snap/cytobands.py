@@ -16,7 +16,7 @@ class Cytoband:
     stain: str
 
 
-DATA_DIR = Path(__file__).resolve().parent.parent / "data" / "ucsc"
+DATA_DIR = Path(__file__).resolve().parent / "data" / "ucsc"
 BUNDLED_CYTOBANDS = {
     "hg19": DATA_DIR / "hg19.cytoBand.txt.gz",
     "hg38": DATA_DIR / "hg38.cytoBand.txt.gz",

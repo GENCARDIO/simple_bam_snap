@@ -9,7 +9,7 @@ mkdir -p "$MPLCONFIGDIR"
 
 python3 generate_demo_data.py
 
-python3 locus_snap.py \
+python3 -m locus_snap \
   --bam test/test.bam \
   --region chr9:101867481-101867620 \
   --custom_track 'out/demo_data/annotations/demo_regions.bed,bed,Candidate regions,#000000,pack,0.42' \
@@ -22,7 +22,7 @@ python3 locus_snap.py \
   --fig_width 14 \
   --dpi 150
 
-python3 locus_snap.py \
+python3 -m locus_snap \
   --bam test/test.bam \
   --region chr9:101867481-101867620 \
   --track out/demo_data/variants/demo_variants.vcf.gz \
@@ -35,7 +35,7 @@ python3 locus_snap.py \
   --fig_width 12 \
   --dpi 140
 
-python3 locus_snap.py \
+python3 -m locus_snap \
   --bam out/demo_data/alignments/demo_tumour.bam \
   --fasta out/demo_data/reference/demo_reference.fa \
   --region chrDemo:81-180 \
@@ -49,7 +49,7 @@ python3 locus_snap.py \
   --fig_width 14 \
   --dpi 140
 
-python3 locus_snap.py \
+python3 -m locus_snap \
   --bam test/test.bam \
   --region chr9:101867481-101867620 \
   --track out/demo_data/annotations/demo_cnv.seg \
@@ -61,7 +61,7 @@ python3 locus_snap.py \
   --fig_width 13 \
   --dpi 140
 
-python3 locus_snap.py \
+python3 -m locus_snap \
   --bam out/demo_data/alignments/demo_tumour.bam \
   --fasta out/demo_data/reference/demo_reference.fa \
   --region chrDemo:81-180 \
@@ -79,7 +79,7 @@ python3 locus_snap.py \
   --fig_width 14 \
   --dpi 140
 
-python3 locus_snap.py \
+python3 -m locus_snap \
   --bam out/demo_data/alignments/demo_tumour.bam \
   --fasta out/demo_data/reference/demo_reference.fa \
   --region chrDemo:81-180 \
@@ -93,7 +93,7 @@ python3 locus_snap.py \
   --fig_width 14 \
   --dpi 140
 
-python3 locus_snap.py \
+python3 -m locus_snap \
   --bam out/demo_data/alignments/demo_tumour.bam \
   --fasta out/demo_data/reference/demo_reference.fa \
   --region chrDemo:81-180 \
@@ -109,7 +109,7 @@ python3 locus_snap.py \
   --fig_width 13 \
   --dpi 140
 
-python3 locus_snap.py \
+python3 -m locus_snap \
   --bam out/demo_data/alignments/demo_met_ex14.bam \
   --sample_label 'METex14-positive lung adenocarcinoma · synthetic RNA-seq' \
   --region chr7:116771401-116775200 \
@@ -128,7 +128,7 @@ python3 locus_snap.py \
   --fig_width 14 \
   --dpi 140
 
-python3 locus_snap.py \
+python3 -m locus_snap \
   --bam test/test.bam \
   --region chr9:101865501-101869500 \
   --config out/demo_data/config/demo_chipseq.yaml \
@@ -146,7 +146,7 @@ python3 locus_snap.py \
   --fig_width 14 \
   --dpi 150
 
-python3 locus_snap.py \
+python3 -m locus_snap \
   --bam out/demo_data/alignments/demo_tumour.bam \
   --bam out/demo_data/alignments/demo_normal.bam \
   --bam out/demo_data/alignments/demo_relapse.bam \
@@ -168,7 +168,7 @@ python3 locus_snap.py \
   --fig_width 14 \
   --dpi 150
 
-python3 locus_snap.py \
+python3 -m locus_snap \
   --bam test/test.bam \
   --region chr9:101867481-101867620 \
   --config out/demo_data/config/demo_track_heights.yaml \
@@ -182,7 +182,7 @@ python3 locus_snap.py \
   --fig_width 14 \
   --dpi 150
 
-python3 locus_snap.py \
+python3 -m locus_snap \
   --bam test/test.bam \
   --region chr9:101867481-101867620 \
   --output_dir out \
@@ -190,7 +190,7 @@ python3 locus_snap.py \
   --fig_width 14 \
   --dpi 100
 
-python3 locus_snap.py \
+python3 -m locus_snap \
   --bam out/demo_data/alignments/demo_structural_variants.bam \
   --sample_label 'Tumour · deletion, tandem duplication, inversion, and chr1–chr2 translocation' \
   --region chr1:1001-8500 \

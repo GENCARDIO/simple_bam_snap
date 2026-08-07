@@ -11,7 +11,7 @@ from typing import Dict, Iterable, Iterator, List, Optional, Sequence, Tuple
 import pysam
 from matplotlib.colors import is_color_like, to_hex
 
-from src.config import DEFAULT_TRACK_COLORS
+from locus_snap.config import DEFAULT_TRACK_COLORS
 
 
 SUPPORTED_TRACK_FORMATS = (

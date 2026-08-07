@@ -6,7 +6,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import pytest
 
-from src.layout import (
+from locus_snap.layout import (
     build_rows, expand_rows, infer_reference_base, pack_rows, truncate_rows,
 )
 

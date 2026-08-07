@@ -3,7 +3,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from src.snapshot import compare_snapshots
+from locus_snap.snapshot import compare_snapshots
 
 
 TEST_BAM = os.path.join(os.path.dirname(__file__), "test.bam")

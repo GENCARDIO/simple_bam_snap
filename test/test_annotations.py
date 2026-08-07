@@ -6,7 +6,7 @@ import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from src.annotations import (
+from locus_snap.annotations import (
     AnnotationSource,
     BafSource,
     build_annotation_sources,
@@ -15,7 +15,7 @@ from src.annotations import (
     infer_track_format,
     normalize_track_color,
 )
-from src.snapshot import compare_snapshots
+from locus_snap.snapshot import compare_snapshots
 
 TEST_BAM = os.path.join(os.path.dirname(__file__), "test.bam")
 
