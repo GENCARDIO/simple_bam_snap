@@ -10,6 +10,8 @@ preferences:
   # sort_base_position: 101867542
   sort_order: desc
   max_alignment_depth: 100
+  # Set false for track-only figures such as normalized ChIP-seq profiles.
+  show_alignments: true
   long_gap_threshold: 10
   min_mapq: 0
   include_secondary: false
@@ -53,11 +55,41 @@ alignment_colors:
   large_insert: "#e34948"
   # The small-insert colour is also used for CIGAR insertion markers.
   small_insert: "#4a3aa7"
-  ff: "#9ec5f4"
-  rr: "#5598e7"
+  # Exact IGV pair-orientation colours: FF maps to IGV LL for an FR library.
+  ff: "#009696"
+  rr: "#1432c8"
   everted: "#008300"
-  # null preserves stable chromosome-specific mate hues.
+  # null uses IGV's chromosome-specific mate colours below.
   interchrom: null
+
+# Exact IGV colours used for inter-chromosomal pairs, keyed by mate chromosome.
+# Additional contigs are allowed and otherwise receive a deterministic fallback.
+chromosome_colors:
+  chr1: "#5050ff"
+  chr2: "#ce3d32"
+  chr3: "#749b58"
+  chr4: "#f0e685"
+  chr5: "#466983"
+  chr6: "#ba6338"
+  chr7: "#5db1dd"
+  chr8: "#802268"
+  chr9: "#6bd76b"
+  chr10: "#d595a7"
+  chr11: "#924822"
+  chr12: "#837b8d"
+  chr13: "#c75127"
+  chr14: "#d58f5c"
+  chr15: "#7a65a5"
+  chr16: "#e4af69"
+  chr17: "#3b1b53"
+  chr18: "#cddeb7"
+  chr19: "#612a79"
+  chr20: "#ae1f63"
+  chr21: "#e7c76f"
+  chr22: "#5a655e"
+  chrX: "#cc9900"
+  chrY: "#99cc00"
+  chrUn: "#404040"
 
 base_colors:
   A: "#008300"
@@ -149,6 +181,8 @@ styles:
   cnv_fill_alpha: 0.28
   baf_alpha: 0.90
   peak_fill_alpha: 0.55
+  # Continuous ChIP/ATAC/DNase signal profiles use their own opacity.
+  signal_fill_alpha: 0.82
   density_fill_alpha: 0.45
   haplotype_lane_alpha: 0.055
   # Reads have no rectangular border by default.
@@ -158,6 +192,12 @@ styles:
   annotation_edge_width: 0.30
   pair_link_width: 0.85
   squish_pair_link_width: 0.40
+  # CIGAR deletion connectors are slightly stronger than reference skips.
+  deletion_line_width: 0.65
+  squish_deletion_line_width: 0.30
+  # Solid connectors between RNA-seq blocks separated by a CIGAR N operation.
+  split_read_line_width: 0.55
+  squish_split_read_line_width: 0.30
   grid_line_width: 0.60
   gene_line_width: 0.55
   primary_gene_line_width: 0.85
@@ -165,6 +205,10 @@ styles:
   gene_arrow_size: 2.70
   gene_arrow_spacing_px: 24.0
   peak_summit_width: 0.85
+  signal_line_width: 0.75
+  # Zero scales each signal automatically. Set a positive common maximum when
+  # comparing normalized samples.
+  signal_y_max: 0.0
   center_guide_alpha: 0.65
   center_guide_width: 0.80
   center_guide_line_style: "--"

@@ -23,26 +23,32 @@ from __future__ import annotations
 
 from bisect import bisect_left
 from functools import partial
+from operator import attrgetter
 from typing import Callable, List, Optional, Tuple
 
 from src.read_model import AlignedRead
 
 SortKeyFunc = Callable[[AlignedRead], object]
 
+
+def zero_sort_key(read):
+    return 0
+
+
 SORT_KEYS: dict[str, SortKeyFunc] = {
-    "base": lambda r: 0,
-    "gap_length": lambda r: r.gap_length,
-    "cigar_gap": lambda r: r.cigar_gap_len,
-    "sa_gap": lambda r: r.sa_gap_len,
-    "sa_count": lambda r: r.sa_count,
-    "soft_clip": lambda r: r.soft_clip_total,
-    "mismatch": lambda r: r.mismatch_count,
-    "mapq": lambda r: r.mapq,
-    "insert_size": lambda r: r.insert_size,
-    "start": lambda r: r.ref_start,
-    "strand": lambda r: r.strand,
-    "read_name": lambda r: r.query_name,
-    "none": lambda r: 0,
+    "base": zero_sort_key,
+    "gap_length": attrgetter("gap_length"),
+    "cigar_gap": attrgetter("cigar_gap_len"),
+    "sa_gap": attrgetter("sa_gap_len"),
+    "sa_count": attrgetter("sa_count"),
+    "soft_clip": attrgetter("soft_clip_total"),
+    "mismatch": attrgetter("mismatch_count"),
+    "mapq": attrgetter("mapq"),
+    "insert_size": attrgetter("insert_size"),
+    "start": attrgetter("ref_start"),
+    "strand": attrgetter("strand"),
+    "read_name": attrgetter("query_name"),
+    "none": zero_sort_key,
 }
 
 BASE_SORT_ORDER = {"N": 0, "A": 1, "C": 2, "G": 3, "T": 4}
@@ -87,7 +93,11 @@ def infer_reference_base(reads: List[AlignedRead], position: int) -> Optional[st
             counts[observed] = counts.get(observed, 0) + 1
     if not counts:
         return None
-    return max(counts, key=lambda base: (counts[base], base))
+    best_base = None
+    for base in counts:
+        if best_base is None or (counts[base], base) > (counts[best_base], best_base):
+            best_base = base
+    return best_base
 
 
 def order_reads(
@@ -102,11 +112,11 @@ def order_reads(
         )
     else:
         key_func = resolve_sort_key(sort_by)
-    return sorted(
-        reads,
-        key=lambda r: (key_func(r), -r.ref_start if descending else r.ref_start),
-        reverse=descending,
-    )
+
+    def full_sort_key(r):
+        return (key_func(r), -r.ref_start if descending else r.ref_start)
+
+    return sorted(reads, key=full_sort_key, reverse=descending)
 
 
 def group_reads(
@@ -144,7 +154,7 @@ def group_reads(
         members = pair_members.get(key, [])
         if read in members and len(members) >= 2:
             if key not in emitted_pairs:
-                groups.append(sorted(members, key=lambda member: member.ref_start))
+                groups.append(sorted(members, key=attrgetter("ref_start")))
                 emitted_pairs.add(key)
         else:
             groups.append([read])
@@ -173,8 +183,13 @@ def pack_rows(
     rows: List[List[AlignedRead]] = []
     row_intervals: List[List[Tuple[int, int]]] = []
     for group in groups:
-        group_start = min(read.ref_start for read in group)
-        group_end = max(read.ref_end for read in group)
+        group_start = None
+        group_end = None
+        for read in group:
+            if group_start is None or read.ref_start < group_start:
+                group_start = read.ref_start
+            if group_end is None or read.ref_end > group_end:
+                group_end = read.ref_end
         placed = False
         for row_index, intervals in enumerate(row_intervals):
             insert_at = bisect_left(intervals, (group_start, group_end))
@@ -190,7 +205,7 @@ def pack_rows(
                 continue
             intervals.insert(insert_at, (group_start, group_end))
             rows[row_index].extend(group)
-            rows[row_index].sort(key=lambda read: read.ref_start)
+            rows[row_index].sort(key=attrgetter("ref_start"))
             placed = True
             break
         if not placed:
@@ -238,13 +253,15 @@ def build_rows(
         grouped_reads = {}
         for read in reads:
             grouped_reads.setdefault(getattr(read, "haplotype", None), []).append(read)
-        labels = sorted(
-            grouped_reads,
-            key=lambda label: (
-                2 if label is None else 0 if str(label).isdigit() else 1,
-                int(label) if label is not None and str(label).isdigit() else str(label or ""),
-            ),
-        )
+
+        def haplotype_label_key(label):
+            if label is None:
+                return 2, ""
+            if str(label).isdigit():
+                return 0, int(label)
+            return 1, str(label)
+
+        labels = sorted(grouped_reads, key=haplotype_label_key)
         rows = []
         for label in labels:
             rows.extend(build_rows(
@@ -287,5 +304,7 @@ def truncate_rows(
     returns (kept_rows, n_reads_dropped)."""
     if max_rows is None or len(rows) <= max_rows:
         return rows, 0
-    dropped = sum(len(r) for r in rows[max_rows:])
+    dropped = 0
+    for r in rows[max_rows:]:
+        dropped += len(r)
     return rows[:max_rows], dropped

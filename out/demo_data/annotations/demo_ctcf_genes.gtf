@@ -1,0 +1,15 @@
+chr9	demo	transcript	101865560	101867180	.	+	.	gene_id "CTCF_TARGET_A"; transcript_id "CTCF_TARGET_A-201"; gene_name "CTCF_TARGET_A";
+chr9	demo	exon	101865560	101865820	.	+	.	gene_id "CTCF_TARGET_A"; transcript_id "CTCF_TARGET_A-201"; gene_name "CTCF_TARGET_A";
+chr9	demo	CDS	101865650	101865820	.	+	0	gene_id "CTCF_TARGET_A"; transcript_id "CTCF_TARGET_A-201"; gene_name "CTCF_TARGET_A";
+chr9	demo	exon	101866120	101866340	.	+	.	gene_id "CTCF_TARGET_A"; transcript_id "CTCF_TARGET_A-201"; gene_name "CTCF_TARGET_A";
+chr9	demo	CDS	101866120	101866340	.	+	0	gene_id "CTCF_TARGET_A"; transcript_id "CTCF_TARGET_A-201"; gene_name "CTCF_TARGET_A";
+chr9	demo	exon	101866920	101867180	.	+	.	gene_id "CTCF_TARGET_A"; transcript_id "CTCF_TARGET_A-201"; gene_name "CTCF_TARGET_A";
+chr9	demo	CDS	101866920	101867060	.	+	0	gene_id "CTCF_TARGET_A"; transcript_id "CTCF_TARGET_A-201"; gene_name "CTCF_TARGET_A";
+chr9	demo	transcript	101867420	101869390	.	-	.	gene_id "CTCF_TARGET_B"; transcript_id "CTCF_TARGET_B-201"; gene_name "CTCF_TARGET_B";
+chr9	demo	exon	101867420	101867720	.	-	.	gene_id "CTCF_TARGET_B"; transcript_id "CTCF_TARGET_B-201"; gene_name "CTCF_TARGET_B";
+chr9	demo	CDS	101867560	101867720	.	-	0	gene_id "CTCF_TARGET_B"; transcript_id "CTCF_TARGET_B-201"; gene_name "CTCF_TARGET_B";
+chr9	demo	exon	101868040	101868280	.	-	.	gene_id "CTCF_TARGET_B"; transcript_id "CTCF_TARGET_B-201"; gene_name "CTCF_TARGET_B";
+chr9	demo	CDS	101868040	101868280	.	-	0	gene_id "CTCF_TARGET_B"; transcript_id "CTCF_TARGET_B-201"; gene_name "CTCF_TARGET_B";
+chr9	demo	exon	101868720	101868940	.	-	.	gene_id "CTCF_TARGET_B"; transcript_id "CTCF_TARGET_B-201"; gene_name "CTCF_TARGET_B";
+chr9	demo	CDS	101868720	101868940	.	-	0	gene_id "CTCF_TARGET_B"; transcript_id "CTCF_TARGET_B-201"; gene_name "CTCF_TARGET_B";
+chr9	demo	exon	101869180	101869390	.	-	.	gene_id "CTCF_TARGET_B"; transcript_id "CTCF_TARGET_B-201"; gene_name "CTCF_TARGET_B";

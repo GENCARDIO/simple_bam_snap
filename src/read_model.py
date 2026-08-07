@@ -67,9 +67,11 @@ def iter_cigar_blocks(cigartuples, ref_start: int):
 
 def cigar_reference_length(cigar_str: str) -> int:
     """Reference span implied by a CIGAR string (e.g. an SA tag's CIGAR field)."""
-    return sum(
-        int(num) for num, op in SA_FIELD_PATTERN.findall(cigar_str) if op in REF_CONSUMING
-    )
+    total = 0
+    for num, op in SA_FIELD_PATTERN.findall(cigar_str):
+        if op in REF_CONSUMING:
+            total += int(num)
+    return total
 
 
 def parse_sa_tag(raw: str) -> List[SAEntry]:
@@ -138,13 +140,20 @@ def classify_insert_sizes(reads: List["AlignedRead"], sigma: float = 3.0, min_pa
     since expected fragment size varies by library/protocol. With too few FR
     pairs to estimate a range, nothing is flagged.
     """
-    samples = sorted(r.insert_size for r in reads if r.pair_orientation == "FR" and r.insert_size > 0)
+    samples = []
+    for r in reads:
+        if r.pair_orientation == "FR" and r.insert_size > 0:
+            samples.append(r.insert_size)
+    samples.sort()
     if len(samples) < min_pairs:
         return
 
     n = len(samples)
     median = samples[n // 2] if n % 2 else (samples[n // 2 - 1] + samples[n // 2]) / 2
-    deviations = sorted(abs(s - median) for s in samples)
+    deviations = []
+    for s in samples:
+        deviations.append(abs(s - median))
+    deviations.sort()
     mad = deviations[n // 2] if n % 2 else (deviations[n // 2 - 1] + deviations[n // 2]) / 2
     robust_std = mad * 1.4826 or 1.0
     lo, hi = median - sigma * robust_std, median + sigma * robust_std
@@ -288,11 +297,14 @@ class AlignedRead:
                             )
                             self.mismatch_details.append((rpos, qbase, base_quality))
 
-        self.cigar_gap_len = sum(
-            deletion[1] for deletion in self.deletions if not deletion[2]
-        ) + sum(
-            insertion[1] for insertion in self.insertions
-        )
+        deletion_len = 0
+        for deletion in self.deletions:
+            if not deletion[2]:
+                deletion_len += deletion[1]
+        insertion_len = 0
+        for insertion in self.insertions:
+            insertion_len += insertion[1]
+        self.cigar_gap_len = deletion_len + insertion_len
         self.soft_clip_total = self.soft_clip_left + self.soft_clip_right
         self.mismatch_count = len(self.mismatches)
 

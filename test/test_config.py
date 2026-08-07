@@ -7,8 +7,14 @@ import pytest
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from simple_bam_snap import apply_config_preferences, build_parser
-from src.config import DEFAULT_ALIGNMENT_COLORS, load_alignment_colors, load_config
-from src.render import AlignmentRenderer, INSERTION_COLOR
+from src.config import (
+    DEFAULT_ALIGNMENT_COLORS,
+    DEFAULT_CHROMOSOME_COLORS,
+    DEFAULT_INSERTION_COLOR,
+    load_alignment_colors,
+    load_config,
+)
+from src.render import AlignmentRenderer, chrom_color
 
 
 def test_partial_alignment_color_config_inherits_defaults(tmp_path):
@@ -58,19 +64,55 @@ def test_renderer_uses_configured_pair_category_color():
 
 
 def test_default_small_insert_colour_matches_cigar_insertions():
-    assert DEFAULT_ALIGNMENT_COLORS["small_insert"] == INSERTION_COLOR
+    assert DEFAULT_ALIGNMENT_COLORS["small_insert"] == DEFAULT_INSERTION_COLOR
 
 
-def test_interchrom_null_keeps_chromosome_palette():
+def test_default_same_strand_pair_colours_match_igv():
+    assert DEFAULT_ALIGNMENT_COLORS["ff"] == "#009696"
+    assert DEFAULT_ALIGNMENT_COLORS["rr"] == "#1432c8"
+
+
+def test_interchrom_colours_match_igv_mate_chromosome_table():
+    assert chrom_color("chr1") == "#5050ff"
+    assert chrom_color("1") == "#5050ff"
+    assert chrom_color("chr2") == "#ce3d32"
+    assert DEFAULT_CHROMOSOME_COLORS["chr7"] == "#5db1dd"
+    assert chrom_color("chr48") == "#14ffb1"
+
+
+def test_interchrom_read_uses_reciprocal_mate_chromosome_colour():
     renderer = AlignmentRenderer(
         alignment_colors={"interchrom": None}, shade_by_mapq=False
     )
-    read = SimpleNamespace(
-        pair_category="interchrom", mate_chrom="chr7", is_secondary=False,
+    chr1_read = SimpleNamespace(
+        pair_category="interchrom", mate_chrom="chr2", is_secondary=False,
         is_duplicate=False, mapq=60,
     )
-    color = renderer.read_style(read)[0]
-    assert color.startswith("#")
+    chr2_read = SimpleNamespace(
+        pair_category="interchrom", mate_chrom="chr1", is_secondary=False,
+        is_duplicate=False, mapq=60,
+    )
+
+    assert renderer.read_style(chr1_read)[0] == "#ce3d32"
+    assert renderer.read_style(chr2_read)[0] == "#5050ff"
+    assert renderer.interchrom_mate_colors == {
+        "chr2": "#ce3d32", "chr1": "#5050ff",
+    }
+
+
+def test_chromosome_colours_can_be_overridden_for_custom_contigs(tmp_path):
+    config = tmp_path / "chromosomes.yaml"
+    config.write_text(
+        "chromosome_colors:\n  chrCustom: '#123456'\n", encoding="utf-8"
+    )
+    theme = load_config(str(config))
+    renderer = AlignmentRenderer(visual_config=theme, shade_by_mapq=False)
+    read = SimpleNamespace(
+        pair_category="interchrom", mate_chrom="chrCustom", is_secondary=False,
+        is_duplicate=False, mapq=60,
+    )
+
+    assert renderer.read_style(read)[0] == "#123456"
 
 
 def test_complete_theme_sections_are_merged_and_used(tmp_path):
@@ -117,6 +159,7 @@ def test_yaml_preferences_become_defaults_but_cli_still_wins():
         "display_mode": "squish",
         "max_alignment_depth": 175,
         "view_as_pairs": True,
+        "show_alignments": False,
         "show_coverage": False,
         "show_indel_lengths": True,
         "include_supplementary": False,
@@ -134,6 +177,7 @@ def test_yaml_preferences_become_defaults_but_cli_still_wins():
     assert configured.display_mode == "squish"
     assert configured.max_alignment_depth == 175
     assert configured.view_as_pairs
+    assert configured.no_alignments
     assert configured.no_coverage
     assert configured.show_indel_lengths
     assert configured.exclude_supplementary

@@ -1,8 +1,0 @@
-##fileformat=VCFv4.2
-##contig=<ID=chr9,length=141213431>
-##INFO=<ID=END,Number=1,Type=Integer,Description="End coordinate of the variant">
-#CHROM	POS	ID	REF	ALT	QUAL	FILTER	INFO
-chr9	101867500	rs-demo-snv	A	G	60	PASS	.
-chr9	101867535	.	A	ATG	50	PASS	.
-chr9	101867548	demo-deletion	ATC	A	70	PASS	.
-chr9	101867575	demo-sv	N	<DEL>	80	PASS	END=101867590

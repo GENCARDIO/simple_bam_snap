@@ -1,0 +1,7 @@
+styles:
+  peak_track_height_in: 0.95
+  annotation_row_height_in: 0.34
+  row_height_in: 0.035
+  signal_fill_alpha: 0.82
+  signal_line_width: 0.80
+  signal_y_max: 60.0

@@ -1,0 +1,7 @@
+chr7	demo	transcript	116771498	116775111	.	+	.	gene_id "MET"; transcript_id "NM_000245.4"; gene_name "MET"; tag "MANE_Select";
+chr7	demo	exon	116771498	116771654	.	+	.	gene_id "MET"; transcript_id "NM_000245.4"; gene_name "MET"; tag "MANE_Select"; exon_number "13";
+chr7	demo	CDS	116771498	116771654	.	+	0	gene_id "MET"; transcript_id "NM_000245.4"; gene_name "MET"; tag "MANE_Select"; exon_number "13";
+chr7	demo	exon	116771849	116771989	.	+	.	gene_id "MET"; transcript_id "NM_000245.4"; gene_name "MET"; tag "MANE_Select"; exon_number "14";
+chr7	demo	CDS	116771849	116771989	.	+	0	gene_id "MET"; transcript_id "NM_000245.4"; gene_name "MET"; tag "MANE_Select"; exon_number "14";
+chr7	demo	exon	116774881	116775111	.	+	.	gene_id "MET"; transcript_id "NM_000245.4"; gene_name "MET"; tag "MANE_Select"; exon_number "15";
+chr7	demo	CDS	116774881	116775111	.	+	0	gene_id "MET"; transcript_id "NM_000245.4"; gene_name "MET"; tag "MANE_Select"; exon_number "15";

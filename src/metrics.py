@@ -6,7 +6,6 @@ from __future__ import annotations
 
 import csv
 from dataclasses import dataclass
-from statistics import mean
 from typing import List, Optional
 
 from src.read_model import AlignedRead
@@ -115,6 +114,9 @@ def summarize(
     n_discordant = 0
     n_interchrom = 0
     n_softclipped = 0
+    max_gap = 0
+    total_gap_bp = 0
+    mapq_total = 0
     for read in reads:
         if read.gap_length > 0:
             gapped.append(read)
@@ -130,21 +132,32 @@ def summarize(
             n_interchrom += 1
         if read.soft_clip_total >= min_softclip:
             n_softclipped += 1
+        if read.gap_length > max_gap:
+            max_gap = read.gap_length
+        total_gap_bp += read.gap_length
+        mapq_total += read.mapq
+
+    gapped_total = 0
+    for r in gapped:
+        gapped_total += r.gap_length
+    mean_gap_of_gapped = gapped_total / len(gapped) if gapped else 0.0
+    mean_mapq = mapq_total / n_reads if reads else 0.0
+
     return RegionSummary(
         label=label,
         n_reads=n_reads,
         n_gapped=len(gapped),
         n_long_gap=n_long_gapped,
         long_gap_threshold=long_gap_threshold,
-        max_gap=max((r.gap_length for r in reads), default=0),
-        mean_gap_of_gapped=mean((r.gap_length for r in gapped)) if gapped else 0.0,
-        total_gap_bp=sum(r.gap_length for r in reads),
+        max_gap=max_gap,
+        mean_gap_of_gapped=mean_gap_of_gapped,
+        total_gap_bp=total_gap_bp,
         n_with_sa=n_with_sa,
         n_cross_chrom_sa=n_cross_chrom,
         n_discordant=n_discordant,
         n_interchrom=n_interchrom,
         n_softclipped=n_softclipped,
-        mean_mapq=mean((r.mapq for r in reads)) if reads else 0.0,
+        mean_mapq=mean_mapq,
     )
 
 
@@ -175,15 +188,25 @@ def format_summary_table(summaries: List[RegionSummary]) -> str:
         labels.append(label)
         label_widths.append(len(label))
     col_width = max(label_widths) + 2
-    metric_width = max(len(row[0]) for row in rows) + 2
+    metric_width = 0
+    for name, _fmt in rows:
+        if len(name) > metric_width:
+            metric_width = len(name)
+    metric_width += 2
 
     lines = []
-    header = "metric".ljust(metric_width) + "".join(l.ljust(col_width) for l in labels)
+    label_cells = ""
+    for l in labels:
+        label_cells += l.ljust(col_width)
+    header = "metric".ljust(metric_width) + label_cells
     lines.append(header)
     lines.append("-" * len(header))
     for name, fmt in rows:
         cells = []
         for summary in summaries:
             cells.append(fmt.format(s=summary))
-        lines.append(name.ljust(metric_width) + "".join(c.ljust(col_width) for c in cells))
+        row_cells = ""
+        for c in cells:
+            row_cells += c.ljust(col_width)
+        lines.append(name.ljust(metric_width) + row_cells)
     return "\n".join(lines)

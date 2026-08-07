@@ -14,14 +14,6 @@ from matplotlib.colors import is_color_like, to_hex
 from src.config import DEFAULT_TRACK_COLORS
 
 
-# Track-type defaults: simple regions are black; transcript structures use a
-# deep UCSC-like navy.
-BED_ANNOTATION_COLOR = DEFAULT_TRACK_COLORS["bed"]
-GENE_ANNOTATION_COLOR = DEFAULT_TRACK_COLORS["gene"]
-VCF_ANNOTATION_COLOR = DEFAULT_TRACK_COLORS["vcf"]
-CNV_ANNOTATION_COLOR = DEFAULT_TRACK_COLORS["cnv"]
-BAF_ANNOTATION_COLOR = DEFAULT_TRACK_COLORS["baf"]
-ANNOTATION_COLOR = GENE_ANNOTATION_COLOR  # backwards-compatible public name
 SUPPORTED_TRACK_FORMATS = (
     "bed", "gff", "gff3", "gtf", "vcf", "seg", "bedgraph", "bdg", "log2", "cnv",
     "narrowpeak", "broadpeak", "peak", "signal",
@@ -117,9 +109,12 @@ def normalize_track_color(value: str) -> str:
         flags=re.IGNORECASE,
     )
     if rgb_match:
-        channels = tuple(int(channel) for channel in rgb_match.groups())
-        if any(channel > 255 for channel in channels):
-            raise ValueError(f"RGB track colour channels must be between 0 and 255: {value!r}")
+        channels = []
+        for channel in rgb_match.groups():
+            channels.append(int(channel))
+        for channel in channels:
+            if channel > 255:
+                raise ValueError(f"RGB track colour channels must be between 0 and 255: {value!r}")
         return "#{:02x}{:02x}{:02x}".format(*channels)
     if not is_color_like(text):
         raise ValueError(
@@ -163,13 +158,17 @@ def subtract_intervals(intervals: Iterable[Interval], masks: Iterable[Interval])
     return result
 
 
+def annotation_position_key(item):
+    return (item.start, item.end, item.name)
+
+
 def pack_annotation_items(
     items: Sequence[AnnotationItem], padding: int = 1
 ) -> List[List[AnnotationItem]]:
     """Greedily place non-overlapping annotation models on shared rows."""
     rows: List[List[AnnotationItem]] = []
     row_ends: List[int] = []
-    for item in sorted(items, key=lambda value: (value.start, value.end, value.name)):
+    for item in sorted(items, key=annotation_position_key):
         for row_index, row_end in enumerate(row_ends):
             if row_end + padding <= item.start:
                 rows[row_index].append(item)
@@ -190,36 +189,72 @@ def collapse_annotation_items(items: Sequence[AnnotationItem]) -> List[Annotatio
 
     collapsed = []
     for group, members in grouped.items():
-        blocks = merge_intervals(
-            block for member in members for block in member.blocks
-        )
-        utrs = subtract_intervals(
-            (utr for member in members for utr in member.utrs), blocks
-        )
-        strands = {member.strand for member in members if member.strand in ("+", "-")}
+        raw_blocks = []
+        for member in members:
+            for block in member.blocks:
+                raw_blocks.append(block)
+        blocks = merge_intervals(raw_blocks)
+
+        raw_utrs = []
+        for member in members:
+            for utr in member.utrs:
+                raw_utrs.append(utr)
+        utrs = subtract_intervals(raw_utrs, blocks)
+
+        strands = set()
+        for member in members:
+            if member.strand in ("+", "-"):
+                strands.add(member.strand)
+
+        start = None
+        end = None
+        for member in members:
+            if start is None or member.start < start:
+                start = member.start
+            if end is None or member.end > end:
+                end = member.end
+
+        name = group
+        for member in members:
+            if member.name:
+                name = member.name
+                break
+        for member in members:
+            if member.group_label:
+                name = member.group_label
+                break
+
+        group_label = ""
+        for member in members:
+            if member.group_label:
+                group_label = member.group_label
+                break
+
+        primary_rank = None
+        for member in members:
+            if member.primary_rank is not None:
+                if primary_rank is None or member.primary_rank < primary_rank:
+                    primary_rank = member.primary_rank
+
+        primary_label = ""
+        for member in members:
+            if member.primary_label:
+                primary_label = member.primary_label
+                break
+
         collapsed.append(AnnotationItem(
-            start=min(member.start for member in members),
-            end=max(member.end for member in members),
-            name=next(
-                (member.group_label for member in members if member.group_label),
-                next((member.name for member in members if member.name), group),
-            ),
+            start=start,
+            end=end,
+            name=name,
             strand=next(iter(strands)) if len(strands) == 1 else ".",
             blocks=blocks,
             utrs=utrs,
             group=group,
-            group_label=next(
-                (member.group_label for member in members if member.group_label), ""
-            ),
-            primary_rank=min(
-                (member.primary_rank for member in members if member.primary_rank is not None),
-                default=None,
-            ),
-            primary_label=next(
-                (member.primary_label for member in members if member.primary_label), ""
-            ),
+            group_label=group_label,
+            primary_rank=primary_rank,
+            primary_label=primary_label,
         ))
-    return sorted(collapsed, key=lambda item: (item.start, item.end, item.name))
+    return sorted(collapsed, key=annotation_position_key)
 
 
 def parse_gff_attributes(raw: str) -> Dict[str, str]:
@@ -260,8 +295,9 @@ def primary_isoform_annotation(raw: str) -> Tuple[Optional[int], str]:
         "primary_transcript_true", "primary_transcript_1",
         "primary_transcript_yes", "is_primary_true", "is_primary_1", "is_primary_yes",
     )
-    if any(marker in normalized for marker in generic_markers):
-        return 4, "Primary transcript"
+    for marker in generic_markers:
+        if marker in normalized:
+            return 4, "Primary transcript"
     return None, ""
 
 
@@ -282,10 +318,12 @@ def select_primary_isoforms(
                 ranks.append(item.primary_rank)
         if ranks:
             best_rank = min(ranks)
-            selected.extend(item for item in members if item.primary_rank == best_rank)
+            for item in members:
+                if item.primary_rank == best_rank:
+                    selected.append(item)
         elif mode == "prefer":
             selected.extend(members)
-    return sorted(selected, key=lambda item: (item.start, item.end, item.name))
+    return sorted(selected, key=annotation_position_key)
 
 
 def parse_bed(lines: Iterable[str], chrom: str, start: int, end: int) -> List[AnnotationItem]:
@@ -401,7 +439,9 @@ def parse_bedgraph(
         except ValueError as exc:
             if fields[3].strip().lower() in {".", "na", "nan", "null"}:
                 continue
-            normalized = {field.lower() for field in fields[:4]}
+            normalized = set()
+            for field in fields[:4]:
+                normalized.add(field.lower())
             if normalized & {"chrom", "chromosome", "start", "end", "value", "log2"}:
                 continue
             raise ValueError(f"Invalid bedGraph/log2 record: {line.rstrip()}") from exc
@@ -487,7 +527,12 @@ def parse_seg(
         normalized = []
         for field in fields:
             normalized.append(re.sub(r"[^a-z0-9]", "", field.lower()))
-        if columns is None and any(value in ("chrom", "chr", "chromosome") for value in normalized):
+        has_header_marker = False
+        for value in normalized:
+            if value in ("chrom", "chr", "chromosome"):
+                has_header_marker = True
+                break
+        if columns is None and has_header_marker:
             candidates = {
                 "sample": ("sample", "sampleid", "id"),
                 "chrom": ("chrom", "chr", "chromosome"),
@@ -500,11 +545,19 @@ def parse_seg(
             }
             columns = {}
             for role, names in candidates.items():
-                columns[role] = next(
-                    (index for index, value in enumerate(normalized) if value in names), None
-                )
+                matched_index = None
+                for index, value in enumerate(normalized):
+                    if value in names:
+                        matched_index = index
+                        break
+                columns[role] = matched_index
             required = (columns["chrom"], columns["start"], columns["end"], columns["value"])
-            if any(index is None for index in required):
+            missing_required = False
+            for index in required:
+                if index is None:
+                    missing_required = True
+                    break
+            if missing_required:
                 raise ValueError(
                     "SEG header must contain chromosome, start, end, and segment-mean/log2 columns."
                 )
@@ -693,9 +746,16 @@ def parse_gff(lines: Iterable[str], chrom: str, start: int, end: int) -> List[An
         else:
             blocks = exons
             utrs = []
+        exon_start = exons[0][0]
+        exon_end = exons[0][1]
+        for value in exons:
+            if value[0] < exon_start:
+                exon_start = value[0]
+            if value[1] > exon_end:
+                exon_end = value[1]
         items.append(AnnotationItem(
-            start=min(model["start"], min(value[0] for value in exons)),
-            end=max(model["end"], max(value[1] for value in exons)),
+            start=min(model["start"], exon_start),
+            end=max(model["end"], exon_end),
             name=model["name"], strand=model["strand"], blocks=blocks, utrs=utrs,
             group=model["group"],
             group_label=gene_labels.get(model["group"], model["group_label"]),
@@ -847,9 +907,7 @@ class AnnotationSource:
             rows = [items] if items else []
         elif self.display_mode == "expand":
             rows = []
-            ordered_items = sorted(
-                items, key=lambda value: (value.start, value.end, value.name)
-            )
+            ordered_items = sorted(items, key=annotation_position_key)
             for item in ordered_items:
                 rows.append([item])
         elif self.display_mode == "collapse" and self.kind in ("gff", "gff3", "gtf"):
@@ -917,10 +975,10 @@ class BafSource:
             if self.indexed:
                 records = variant_file.fetch(query_chrom, max(0, start), end)
             else:
-                records = (
-                    record for record in variant_file
-                    if record.contig == query_chrom and record.stop > start and record.start < end
-                )
+                records = []
+                for record in variant_file:
+                    if record.contig == query_chrom and record.stop > start and record.start < end:
+                        records.append(record)
             for record in records:
                 if (
                     len(record.ref) != 1 or not record.alts or len(record.alts) != 1
@@ -929,7 +987,12 @@ class BafSource:
                     continue
                 sample_data = record.samples[self.sample]
                 genotype = sample_data.get("GT")
-                if not genotype or set(allele for allele in genotype if allele is not None) != {0, 1}:
+                called_alleles = set()
+                if genotype:
+                    for allele in genotype:
+                        if allele is not None:
+                            called_alleles.add(allele)
+                if not genotype or called_alleles != {0, 1}:
                     continue
                 allele_depths = sample_data.get("AD")
                 baf = None

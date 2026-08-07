@@ -86,6 +86,7 @@ class BamSnapshot:
         include_supplementary: bool = True,
         include_duplicates: bool = False,
         max_rows: Optional[int] = None,
+        show_alignments: bool = True,
         show_coverage: bool = True,
         annotate_gap: bool = True,
         fig_width: float = 14.0,
@@ -143,6 +144,7 @@ class BamSnapshot:
         self.include_supplementary = include_supplementary
         self.include_duplicates = include_duplicates
         self.max_rows = max_rows
+        self.show_alignments = show_alignments
         self.show_coverage = show_coverage
         self.annotate_gap = annotate_gap
         self.fig_width = fig_width
@@ -273,6 +275,7 @@ class BamSnapshot:
 
         renderer = AlignmentRenderer(
             fig_width=self.fig_width, dpi=self.dpi,
+            show_alignments=self.show_alignments,
             show_coverage=self.show_coverage, annotate_gap=self.annotate_gap,
             pair_colors=self.pair_colors, shade_by_mapq=self.shade_by_mapq, mapq_cap=self.mapq_cap,
             alignment_colors=self.alignment_colors,
@@ -299,12 +302,14 @@ class BamSnapshot:
             sort_label += f"@{base_position + 1:,}"
             if reference_base:
                 sort_label += f" ref={reference_base}"
-        title = (
-            f"{self.label} -- {len(reads)} reads, display={self.display_mode}, layout={self.layout}, "
-            f"view={'pairs' if self.view_as_pairs else 'alignments'}, "
-            f"haplotypes={self.haplotype_view}, "
-            f"sort_by={sort_label} ({'desc' if self.descending else 'asc'})"
-        )
+        title = self.label
+        if self.show_alignments:
+            title = (
+                f"{self.label} -- {len(reads)} reads, display={self.display_mode}, layout={self.layout}, "
+                f"view={'pairs' if self.view_as_pairs else 'alignments'}, "
+                f"haplotypes={self.haplotype_view}, "
+                f"sort_by={sort_label} ({'desc' if self.descending else 'asc'})"
+            )
         if self.mate_view:
             self.mate_window = choose_mate_window(
                 self.source_reads,

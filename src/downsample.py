@@ -114,10 +114,10 @@ def downsample_reads(
                 ):
                     key = (read.query_name, getattr(read, "reference_name", None))
                     counts[key] = counts.get(key, 0) + 1
-        incomplete_names = {
-            key for key, count in available_counts.items()
-            if count >= 2 and selected_counts.get(key, 0) < 2
-        }
+        incomplete_names = set()
+        for key, count in available_counts.items():
+            if count >= 2 and selected_counts.get(key, 0) < 2:
+                incomplete_names.add(key)
         complete_pairs = []
         for read in selected:
             key = (read.query_name, getattr(read, "reference_name", None))

@@ -64,8 +64,12 @@ def load_cytobands(path: str | Path) -> Dict[str, List[Cytoband]]:
 
     if not by_chrom:
         raise ValueError(f"Cytoband file contains no records: {source}")
+
+    def band_sort_key(band: Cytoband):
+        return (band.start, band.end, band.name)
+
     for bands in by_chrom.values():
-        bands.sort(key=lambda band: (band.start, band.end, band.name))
+        bands.sort(key=band_sort_key)
     return by_chrom
 
 
@@ -105,13 +109,23 @@ def resolve_cytobands(
     candidates = []
     for assembly, path in BUNDLED_CYTOBANDS.items():
         bands = load_cytobands(path)
-        match_count = sum(
-            bool(chrom_bands) and max(band.end for band in chrom_bands) == length
-            for chrom, length in contig_lengths.items()
-            for chrom_bands in [bands_for_chrom(bands, chrom)]
-        )
+        match_count = 0
+        for chrom, length in contig_lengths.items():
+            chrom_bands = bands_for_chrom(bands, chrom)
+            if not chrom_bands:
+                continue
+            max_end = 0
+            for band in chrom_bands:
+                if band.end > max_end:
+                    max_end = band.end
+            if max_end == length:
+                match_count += 1
         candidates.append((match_count, assembly, bands))
-    candidates.sort(key=lambda item: item[0], reverse=True)
+
+    def candidate_score(item) -> int:
+        return item[0]
+
+    candidates.sort(key=candidate_score, reverse=True)
     best_score = candidates[0][0]
     if best_score == 0 or (len(candidates) > 1 and candidates[1][0] == best_score):
         return {}, None

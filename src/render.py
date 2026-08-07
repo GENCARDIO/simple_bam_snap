@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from math import ceil, sqrt
+from operator import attrgetter
 from typing import Any, Dict, List, Optional, Tuple
 
 import matplotlib
@@ -27,13 +28,9 @@ from src.annotations import (
     LoadedAnnotationTrack,
 )
 from src.config import (
-    DEFAULT_ALIGNMENT_COLORS,
-    DEFAULT_BASE_COLORS,
+    DEFAULT_CHROMOSOME_COLORS,
     DEFAULT_CHROMOSOME_PALETTE,
-    DEFAULT_CYTOBAND_COLORS,
     DEFAULT_HAPLOTYPE_COLORS,
-    DEFAULT_INSERTION_COLOR,
-    DEFAULT_STYLES,
     DEFAULT_VISUAL_COLORS,
     load_config,
 )
@@ -41,32 +38,13 @@ from src.cytobands import Cytoband
 from src.read_model import AlignedRead
 from src.reference import ReferenceWindow
 
-# Colors: base identity follows the standard genome-browser convention
-# (A green / C blue / G orange / T red); hues are drawn from the
-# colorblind-validated categorical set rather than picked freehand.
-BASE_COLORS = DEFAULT_BASE_COLORS
-NORMAL_FILL = DEFAULT_ALIGNMENT_COLORS["normal"]
-INSERTION_COLOR = DEFAULT_INSERTION_COLOR
-DELETION_COLOR = DEFAULT_VISUAL_COLORS["deletion"]
-SKIP_COLOR = DEFAULT_VISUAL_COLORS["reference_skip"]
-SOFTCLIP_COLOR = DEFAULT_VISUAL_COLORS["softclip"]
-COVERAGE_COLOR = DEFAULT_VISUAL_COLORS["coverage"]
 DEFAULT_COVERAGE_VAF_THRESHOLD = 0.20
-GRIDLINE = DEFAULT_VISUAL_COLORS["gridline"]
-AXIS_INK = DEFAULT_VISUAL_COLORS["axis"]
-PRIMARY_INK = DEFAULT_VISUAL_COLORS["primary_text"]
-SECONDARY_INK = DEFAULT_VISUAL_COLORS["secondary_text"]
-LEGEND_EDGE = DEFAULT_VISUAL_COLORS["legend_edge"]
+DEFAULT_MAX_REFERENCE_SPAN = 250
 
-# Discordant-pair fill colors, IGV-equivalent: same categories/roles IGV's
+# Discordant-pair legend labels, IGV-equivalent: same categories/roles IGV's
 # "color by insert size and pair orientation" mode uses (red = long insert,
 # blue = short insert, a blue family for same-strand pairs, green for everted,
-# per-chromosome hue for inter-chromosomal mates), drawn from the same
-# colorblind-validated categorical set as everything else here rather than
-# IGV's undocumented internal hex values.
-CHROM_PALETTE = DEFAULT_CHROMOSOME_PALETTE
-HAPLOTYPE_COLORS = DEFAULT_HAPLOTYPE_COLORS
-
+# per-chromosome hue for inter-chromosomal mates).
 PAIR_CATEGORY_LABELS = {
     "large_insert": "Large insert",
     "small_insert": "Small insert",
@@ -75,25 +53,6 @@ PAIR_CATEGORY_LABELS = {
     "everted": "Everted (RF)",
     "interchrom": "Inter-chromosomal",
 }
-
-MAPQ_ALPHA_FLOOR = DEFAULT_STYLES["mapq_alpha_floor"]
-
-ROW_HEIGHT_IN = DEFAULT_STYLES["row_height_in"]
-SQUISH_ROW_HEIGHT_IN = DEFAULT_STYLES["squish_row_height_in"]
-ROW_MARGIN = DEFAULT_STYLES["row_margin"]
-SQUISH_ROW_MARGIN = DEFAULT_STYLES["squish_row_margin"]
-ANNOTATION_ROW_HEIGHT_IN = DEFAULT_STYLES["annotation_row_height_in"]
-CNV_TRACK_HEIGHT_IN = DEFAULT_STYLES["cnv_track_height_in"]
-BAF_TRACK_HEIGHT_IN = DEFAULT_STYLES["baf_track_height_in"]
-IDEOGRAM_HEIGHT_IN = DEFAULT_STYLES["ideogram_height_in"]
-PANEL_HEADER_HEIGHT_IN = DEFAULT_STYLES["panel_header_height_in"]
-REFERENCE_HEIGHT_IN = DEFAULT_STYLES["reference_height_in"]
-DEFAULT_MAX_REFERENCE_SPAN = 250
-IDEOGRAM_COLOR = DEFAULT_VISUAL_COLORS["ideogram"]
-IDEOGRAM_WINDOW_COLOR = DEFAULT_VISUAL_COLORS["ideogram_window"]
-CYTOBAND_COLORS = DEFAULT_CYTOBAND_COLORS
-CNV_GAIN_COLOR = DEFAULT_VISUAL_COLORS["cnv_gain"]
-CNV_LOSS_COLOR = DEFAULT_VISUAL_COLORS["cnv_loss"]
 
 
 @dataclass
@@ -137,15 +96,21 @@ def compute_feature_density(
     return centers, densities
 
 
-def chrom_color(chrom: Optional[str], palette: Optional[List[str]] = None) -> str:
-    """Stable per-chromosome hue (same idea as IGV's karyotype coloring) for
-    inter-chromosomal mate pairs. Deterministic within a run, not globally
-    fixed across all human chromosome names."""
-    palette = palette or CHROM_PALETTE
+def chrom_color(
+    chrom: Optional[str], palette: Optional[List[str]] = None,
+    *, colors: Optional[Dict[str, str]] = None,
+) -> str:
+    """Return IGV's mate-chromosome colour, with a stable contig fallback."""
+    colors = DEFAULT_CHROMOSOME_COLORS if colors is None else colors
+    palette = palette or DEFAULT_CHROMOSOME_PALETTE
     if not chrom:
-        return AXIS_INK
+        return DEFAULT_VISUAL_COLORS["axis"]
+    label = str(chrom)
+    normalized = label if label.startswith("chr") else f"chr{label}"
+    if normalized in colors:
+        return colors[normalized]
     h = 0
-    for ch in chrom:
+    for ch in normalized:
         h = (h * 31 + ord(ch)) & 0xFFFFFFFF
     return palette[h % len(palette)]
 
@@ -154,8 +119,8 @@ def haplotype_color(
     haplotype: Optional[str], colors: Optional[Dict[str, str]] = None,
     palette: Optional[List[str]] = None,
 ) -> str:
-    colors = colors or HAPLOTYPE_COLORS
-    palette = palette or CHROM_PALETTE
+    colors = colors or DEFAULT_HAPLOTYPE_COLORS
+    palette = palette or DEFAULT_CHROMOSOME_PALETTE
     label = str(haplotype) if haplotype is not None else "untagged"
     if label in colors:
         return colors[label]
@@ -231,7 +196,7 @@ def compute_snv_counts(
     counts: Dict[int, Dict[str, int]] = {}
     for read in reads:
         for position, base in read.mismatches:
-            if start <= position < end and base in BASE_COLORS and base != "N":
+            if start <= position < end and base in "ACGT":
                 position_counts = counts.setdefault(position, {})
                 position_counts[base] = position_counts.get(base, 0) + 1
     return counts
@@ -414,7 +379,10 @@ def left_margin_fraction(
     fig_width: float, genomic_tracks: List[LoadedAnnotationTrack]
 ) -> float:
     """Reserve enough physical space for annotation labels outside the axes."""
-    longest_label = max((len(track.label) for track in genomic_tracks), default=0)
+    longest_label = 0
+    for track in genomic_tracks:
+        if len(track.label) > longest_label:
+            longest_label = len(track.label)
     margin_in = max(0.70, 0.25 + longest_label * 0.065)
     return min(margin_in / fig_width, 0.22)
 
@@ -435,6 +403,7 @@ class AlignmentRenderer:
         self,
         fig_width: float = 14.0,
         dpi: int = 150,
+        show_alignments: bool = True,
         show_coverage: bool = True,
         annotate_gap: bool = True,
         max_mismatch_render_span: int = 5000,
@@ -465,6 +434,7 @@ class AlignmentRenderer:
         self.visual_colors = dict(theme["visual_colors"])
         self.haplotype_colors = dict(theme["haplotype_colors"])
         self.cytoband_colors = dict(theme["cytoband_colors"])
+        self.chromosome_colors = dict(theme["chromosome_colors"])
         self.chromosome_palette = list(theme["chromosome_palette"])
         self.styles = dict(theme["styles"])
         self.sort_base_position = sort_base_position
@@ -481,6 +451,7 @@ class AlignmentRenderer:
         self.sashimi_strand = sashimi_strand
         self.fig_width = fig_width
         self.dpi = dpi
+        self.show_alignments = show_alignments
         self.show_coverage = show_coverage
         self.annotate_gap = annotate_gap
         self.max_mismatch_render_span = max_mismatch_render_span
@@ -490,6 +461,7 @@ class AlignmentRenderer:
         self.alignment_colors = dict(theme["alignment_colors"])
         if alignment_colors:
             self.alignment_colors.update(alignment_colors)
+        self.interchrom_mate_colors: Dict[str, str] = {}
         if display_mode not in ("collapse", "expand", "squish"):
             raise ValueError(
                 f"Unknown display mode '{display_mode}'. Choose collapse, expand, or squish."
@@ -531,9 +503,11 @@ class AlignmentRenderer:
             self.legend_height_in = legend_rows * 0.72
         else:
             self.legend_height_in = legend_group_count * 0.62
-        self.legend_bottom_in = 0.04
-        self.legend_plot_gap_in = 0.12
+        self.legend_bottom_in = 0.04 if show_alignments else 0.08
+        self.legend_plot_gap_in = 0.12 if show_alignments else 0.0
         self.legend_tick_clearance_in = 0.30
+        if not show_alignments:
+            self.legend_height_in = 0.0
         self.legend_margin_in = (
             self.legend_bottom_in + self.legend_height_in + self.legend_plot_gap_in
             + self.legend_tick_clearance_in
@@ -570,8 +544,11 @@ class AlignmentRenderer:
             )
         elif self.pair_colors and read.pair_category == "interchrom":
             color = self.alignment_colors["interchrom"] or chrom_color(
-                read.mate_chrom, self.chromosome_palette
+                read.mate_chrom, self.chromosome_palette,
+                colors=self.chromosome_colors,
             )
+            if read.mate_chrom:
+                self.interchrom_mate_colors[str(read.mate_chrom)] = color
         elif self.pair_colors and read.pair_category == "large_insert":
             color = self.alignment_colors["large_insert"]
         elif self.pair_colors and read.pair_category == "small_insert":
@@ -639,8 +616,13 @@ class AlignmentRenderer:
         if self.show_sashimi:
             tracks.append("sashimi")
             ratios.append(self.styles["sashimi_track_height_in"])
-        tracks.append("alignments")
-        ratios.append(max(n_rows * self.row_height_in, self.row_height_in))
+        if self.show_alignments:
+            tracks.append("alignments")
+            ratios.append(max(n_rows * self.row_height_in, self.row_height_in))
+        if not tracks:
+            raise ValueError(
+                "Nothing to render: enable alignments, coverage, the ideogram, or a genomic track."
+            )
 
         top_margin_in = 0.72  # dedicated region-title and subtitle lanes
         bottom_margin_in = self.legend_margin_in
@@ -725,15 +707,29 @@ class AlignmentRenderer:
                 ax_by_track["sashimi"], sashimi_reads, window_start, window_end
             )
 
-        # --- alignments --------------------------------------------------
-        aln_ax = ax_by_track["alignments"]
-        aln_ax.set_ylim(n_rows, 0)
-        self.draw_haplotype_lanes(aln_ax, rows)
+        # --- alignments and genomic axis --------------------------------
+        axis_ax = ax_by_track[tracks[-1]]
+        if self.show_alignments:
+            aln_ax = ax_by_track["alignments"]
+            aln_ax.set_ylim(n_rows, 0)
+            self.draw_haplotype_lanes(aln_ax, rows)
+            for row_idx, row in enumerate(rows):
+                y0 = row_idx + self.row_margin
+                h = 1 - 2 * self.row_margin
+                self.draw_alignment_row(
+                    aln_ax, row, y0, h, render_base_detail, layout
+                )
+
+            if not rows:
+                aln_ax.text(
+                    0.5, 0.5, "No alignments in this region", transform=aln_ax.transAxes,
+                    ha="center", va="center", fontsize=10, color=self.visual_colors["secondary_text"],
+                )
         apply_genomic_axis(
-            aln_ax, tick_positions, window_start, window_end, label_size=9,
+            axis_ax, tick_positions, window_start, window_end, label_size=9,
             color=self.visual_colors["primary_text"],
         )
-        aln_ax.tick_params(
+        axis_ax.tick_params(
             bottom=True, labelbottom=True, labelsize=9,
             length=3, colors=self.visual_colors["primary_text"],
         )
@@ -747,19 +743,6 @@ class AlignmentRenderer:
                         lw=self.styles["grid_line_width"], zorder=0,
                     )
 
-        for row_idx, row in enumerate(rows):
-            y0 = row_idx + self.row_margin
-            h = 1 - 2 * self.row_margin
-            self.draw_alignment_row(
-                aln_ax, row, y0, h, render_base_detail, layout
-            )
-
-        if not rows:
-            aln_ax.text(
-                0.5, 0.5, "No alignments in this region", transform=aln_ax.transAxes,
-                ha="center", va="center", fontsize=10, color=self.visual_colors["secondary_text"],
-            )
-
         for track, ax in ax_by_track.items():
             if track != "ideogram":
                 self.draw_center_guide(ax, window_start, window_end)
@@ -772,8 +755,9 @@ class AlignmentRenderer:
         fig.subplots_adjust(left=plot_left, right=plot_right,
                             top=1 - top_margin_in / fig_height,
                             bottom=bottom_margin_in / fig_height)
-        legends = self.draw_legends(fig, fig_height, plot_left, plot_right)
-        self.separate_legend_from_plots(fig, axes, legends)
+        if self.show_alignments:
+            legends = self.draw_legends(fig, fig_height, plot_left, plot_right)
+            self.separate_legend_from_plots(fig, axes, legends)
         fig.savefig(out_path, dpi=self.dpi)
         plt.close(fig)
 
@@ -898,7 +882,10 @@ class AlignmentRenderer:
             donor, acceptor, strand = junction
             if count >= self.min_junction_reads and start <= donor < acceptor <= end:
                 visible.append((donor, acceptor, strand, count))
-        visible.sort(key=lambda item: (item[1] - item[0], item[0]), reverse=True)
+        def junction_span_key(item):
+            return (item[1] - item[0], item[0])
+
+        visible.sort(key=junction_span_key, reverse=True)
 
         if self.sashimi_strand == "split":
             ax.set_ylim(-1.05, 1.05)
@@ -921,8 +908,13 @@ class AlignmentRenderer:
             )
             return
 
-        maximum_span = max(acceptor - donor for donor, acceptor, strand, count in visible)
-        maximum_count = max(count for donor, acceptor, strand, count in visible)
+        maximum_span = 0
+        maximum_count = 0
+        for donor, acceptor, strand, count in visible:
+            if acceptor - donor > maximum_span:
+                maximum_span = acceptor - donor
+            if count > maximum_count:
+                maximum_count = count
         for donor, acceptor, strand, count in visible:
             span = acceptor - donor
             direction = -1 if self.sashimi_strand == "split" and strand == "-" else 1
@@ -993,8 +985,14 @@ class AlignmentRenderer:
             elif band.name.startswith("q"):
                 q_centromeres.append(band)
         if p_centromeres and q_centromeres:
-            p_centromere = max(p_centromeres, key=lambda band: band.end)
-            q_centromere = min(q_centromeres, key=lambda band: band.start)
+            p_centromere = p_centromeres[0]
+            for band in p_centromeres:
+                if band.end > p_centromere.end:
+                    p_centromere = band
+            q_centromere = q_centromeres[0]
+            for band in q_centromeres:
+                if band.start < q_centromere.start:
+                    q_centromere = band
             p_shoulder = bar_x + p_centromere.start / contig_length * bar_width
             q_shoulder = bar_x + q_centromere.end / contig_length * bar_width
             neck_position = (
@@ -1228,11 +1226,18 @@ class AlignmentRenderer:
 
                 visible_fraction = (line_end - line_start) / max(window_end - window_start, 1)
                 name_capacity = int(visible_fraction * 105)
-                item_label = (
-                    item.transcript_label
-                    if track.display_mode != "collapse" and item.transcript_label
-                    else item.name
-                )
+                if track.display_mode == "collapse":
+                    item_label = item.group_label or item.name
+                else:
+                    gene_label = item.group_label or item.group
+                    transcript_label = item.transcript_label or item.name
+                    if (
+                        gene_label and transcript_label
+                        and gene_label != transcript_label
+                    ):
+                        item_label = f"{gene_label} · {transcript_label}"
+                    else:
+                        item_label = gene_label or transcript_label
                 if item.primary_rank is not None:
                     item_label += " ★"
                 display_name = ellipsize(item_label, name_capacity) if name_capacity >= 4 else ""
@@ -1245,35 +1250,73 @@ class AlignmentRenderer:
     def draw_peak_track(
         self, ax, track: LoadedAnnotationTrack, window_start: int, window_end: int
     ) -> None:
-        """Draw peak or positive signal intervals with optional summit markers."""
-        largest_value = max(
-            (item.value for item in track.items if item.value is not None),
-            default=1.0,
+        """Draw called peaks as blocks or quantitative signal as one profile."""
+        continuous_signal = track.kind in SIGNAL_TRACK_FORMATS
+        largest_value = 1.0
+        for item in track.items:
+            if item.value is not None and item.value > largest_value:
+                largest_value = item.value
+        configured_maximum = self.styles["signal_y_max"] if continuous_signal else 0
+        display_maximum = (
+            configured_maximum if configured_maximum > 0
+            else max(largest_value, 1.0)
         )
-        display_maximum = max(largest_value, 1.0)
         value_limit = display_maximum * 1.12
         ax.set_ylim(0, value_limit)
         ax.axhline(0, color=self.visual_colors["axis"], linewidth=0.55, zorder=1)
 
-        for item in track.items:
-            lo, hi = max(item.start, window_start), min(item.end, window_end)
-            if lo >= hi:
-                continue
-            value = item.value if item.value is not None else 1.0
-            ax.add_patch(Rectangle(
-                (lo, 0), hi - lo, value,
-                facecolor=track.color, edgecolor=track.color,
-                linewidth=0.35, alpha=self.styles["peak_fill_alpha"], zorder=2,
-            ))
-            if item.summit is not None and window_start <= item.summit < window_end:
-                ax.plot(
-                    [item.summit, item.summit], [0, value], color=track.color,
-                    linewidth=self.styles["peak_summit_width"], zorder=3,
+        if continuous_signal:
+            positions = [window_start]
+            values = [0.0]
+            cursor = window_start
+            ordered_items = sorted(
+                track.items, key=lambda item: (item.start, item.end)
+            )
+            for item in ordered_items:
+                lo = max(item.start, window_start, cursor)
+                hi = min(item.end, window_end)
+                if lo >= hi:
+                    continue
+                if lo > cursor:
+                    positions.extend([cursor, lo])
+                    values.extend([0.0, 0.0])
+                value = item.value if item.value is not None else 0.0
+                positions.extend([lo, hi])
+                values.extend([value, value])
+                cursor = hi
+            positions.extend([cursor, window_end])
+            values.extend([0.0, 0.0])
+            if len(positions) > 2:
+                ax.fill_between(
+                    positions, 0, values, facecolor=track.color,
+                    alpha=self.styles["signal_fill_alpha"], linewidth=0,
+                    zorder=2,
                 )
                 ax.plot(
-                    item.summit, value, marker="v", markersize=3.0,
-                    color=track.color, markeredgewidth=0, zorder=4,
+                    positions, values, color=track.color,
+                    linewidth=self.styles["signal_line_width"], zorder=3,
+                    solid_capstyle="butt", solid_joinstyle="miter",
                 )
+        else:
+            for item in track.items:
+                lo, hi = max(item.start, window_start), min(item.end, window_end)
+                if lo >= hi:
+                    continue
+                value = item.value if item.value is not None else 1.0
+                ax.add_patch(Rectangle(
+                    (lo, 0), hi - lo, value,
+                    facecolor=track.color, edgecolor=track.color,
+                    linewidth=0.35, alpha=self.styles["peak_fill_alpha"], zorder=2,
+                ))
+                if item.summit is not None and window_start <= item.summit < window_end:
+                    ax.plot(
+                        [item.summit, item.summit], [0, value], color=track.color,
+                        linewidth=self.styles["peak_summit_width"], zorder=3,
+                    )
+                    ax.plot(
+                        item.summit, value, marker="v", markersize=3.0,
+                        color=track.color, markeredgewidth=0, zorder=4,
+                    )
 
         margin_in = min(
             max(0.70, 0.25 + len(track.label) * 0.065), self.fig_width * 0.22
@@ -1300,7 +1343,8 @@ class AlignmentRenderer:
         ax.spines["right"].set_linewidth(0.6)
         ax.yaxis.set_label_position("right")
         ax.set_ylabel(
-            "signal", rotation=90, labelpad=18, fontsize=5.5,
+            "normalized signal" if continuous_signal else "signalValue",
+            rotation=90, labelpad=18, fontsize=5.5,
             color=self.visual_colors["secondary_text"], va="center",
         )
 
@@ -1366,10 +1410,10 @@ class AlignmentRenderer:
         self, ax, track: LoadedAnnotationTrack, window_start: int, window_end: int
     ) -> None:
         """Draw segmented or binned log2 copy-number values around a zero baseline."""
-        largest_value = max(
-            (abs(item.value) for item in track.items if item.value is not None),
-            default=0.0,
-        )
+        largest_value = 0.0
+        for item in track.items:
+            if item.value is not None and abs(item.value) > largest_value:
+                largest_value = abs(item.value)
         value_limit = max(0.5, ceil(largest_value * 1.15 * 2) / 2)
         ax.set_ylim(-value_limit, value_limit)
         ax.axhline(0, color=self.visual_colors["axis"], linewidth=0.65, zorder=1)
@@ -1408,9 +1452,12 @@ class AlignmentRenderer:
             transform=ax.transAxes, ha="right", va="center", fontsize=7,
             color=track.color, fontweight="bold", clip_on=False,
         )
-        sample_names = list(dict.fromkeys(
-            item.sample for item in track.items if item.sample
-        ))
+        sample_names = []
+        seen_samples = set()
+        for item in track.items:
+            if item.sample and item.sample not in seen_samples:
+                seen_samples.add(item.sample)
+                sample_names.append(item.sample)
         if sample_names:
             sample_label = ", ".join(sample_names[:3])
             if len(sample_names) > 3:
@@ -1470,9 +1517,12 @@ class AlignmentRenderer:
             transform=ax.transAxes, ha="right", va="center", fontsize=7,
             color=track.color, fontweight="bold", clip_on=False,
         )
-        sample_names = list(dict.fromkeys(
-            item.sample for item in track.items if item.sample
-        ))
+        sample_names = []
+        seen_samples = set()
+        for item in track.items:
+            if item.sample and item.sample not in seen_samples:
+                seen_samples.add(item.sample)
+                sample_names.append(item.sample)
         if sample_names:
             ax.text(
                 0.005, 0.97, ellipsize(", ".join(sample_names), max(12, int(self.fig_width * 8))),
@@ -1557,12 +1607,26 @@ class AlignmentRenderer:
                 Patch(facecolor=self.alignment_colors["ff"], edgecolor="none", label=PAIR_CATEGORY_LABELS["ff"]),
                 Patch(facecolor=self.alignment_colors["rr"], edgecolor="none", label=PAIR_CATEGORY_LABELS["rr"]),
                 Patch(facecolor=self.alignment_colors["everted"], edgecolor="none", label=PAIR_CATEGORY_LABELS["everted"]),
-                Patch(
-                    facecolor=self.alignment_colors["interchrom"] or self.chromosome_palette[0],
-                    edgecolor="none",
-                    label=PAIR_CATEGORY_LABELS["interchrom"],
-                ),
             ]
+            if self.alignment_colors["interchrom"]:
+                pair_geometry_handles.append(Patch(
+                    facecolor=self.alignment_colors["interchrom"], edgecolor="none",
+                    label=PAIR_CATEGORY_LABELS["interchrom"],
+                ))
+            elif self.interchrom_mate_colors:
+                for mate_chrom, mate_color in self.interchrom_mate_colors.items():
+                    pair_geometry_handles.append(Patch(
+                        facecolor=mate_color, edgecolor="none",
+                        label=f"Mate {mate_chrom}",
+                    ))
+            else:
+                pair_geometry_handles.append(Patch(
+                    facecolor=chrom_color(
+                        "chr1", self.chromosome_palette,
+                        colors=self.chromosome_colors,
+                    ),
+                    edgecolor="none", label="Inter-chromosomal (mate colour)",
+                ))
         haplotype_handles = []
         if self.haplotype_view in ("color", "split"):
             haplotype_handles = [
@@ -1658,13 +1722,18 @@ class AlignmentRenderer:
         fig.canvas.draw()
         canvas_renderer = fig.canvas.get_renderer()
         legend_ax = legends[0].axes
-        legend_top = max(
-            legend_ax.get_window_extent(canvas_renderer).y1,
-            max(legend.get_window_extent(canvas_renderer).y1 for legend in legends),
-        )
-        plot_bottom = min(
-            ax.get_tightbbox(canvas_renderer).y0 for ax in plot_axes if ax is not legend_ax
-        )
+        legend_top = legend_ax.get_window_extent(canvas_renderer).y1
+        for legend in legends:
+            top = legend.get_window_extent(canvas_renderer).y1
+            if top > legend_top:
+                legend_top = top
+        plot_bottom = None
+        for ax in plot_axes:
+            if ax is legend_ax:
+                continue
+            bottom = ax.get_tightbbox(canvas_renderer).y0
+            if plot_bottom is None or bottom < plot_bottom:
+                plot_bottom = bottom
         required_bottom = legend_top + self.legend_plot_gap_in * fig.dpi
         if plot_bottom >= required_bottom:
             return
@@ -1893,31 +1962,48 @@ class AlignmentRenderer:
         if len(panels) != 2:
             raise ValueError("Mate view requires exactly two locus panels.")
 
-        max_rows = max(max(len(panel["rows"]), 1) for panel in panels)
-        show_ref_track = any(
-            bool(
+        max_rows = 1
+        for panel in panels:
+            if len(panel["rows"]) > max_rows:
+                max_rows = len(panel["rows"])
+
+        show_ref_track = False
+        for panel in panels:
+            if (
                 panel.get("reference") and panel["reference"].available and
                 self.max_reference_span > 0 and
                 panel["end"] - panel["start"] <= self.max_reference_span
-            )
-            for panel in panels
-        )
+            ):
+                show_ref_track = True
+                break
+
         tracks = ["panel_header"]
         ratios = [self.styles["panel_header_height_in"]]
-        show_ideogram = self.show_ideogram and any(panel.get("contig_length") for panel in panels)
+        show_ideogram = False
+        if self.show_ideogram:
+            for panel in panels:
+                if panel.get("contig_length"):
+                    show_ideogram = True
+                    break
         if show_ideogram:
             tracks.append("ideogram")
             ratios.append(self.styles["ideogram_height_in"])
         if show_ref_track:
             tracks.append("reference")
             ratios.append(self.styles["reference_height_in"])
-        annotation_count = max(len(panel.get("genomic_tracks", [])) for panel in panels)
+        annotation_count = 0
+        for panel in panels:
+            track_count = len(panel.get("genomic_tracks", []))
+            if track_count > annotation_count:
+                annotation_count = track_count
         annotation_row_counts = []
         for index in range(annotation_count):
-            shared_rows = max(
-                max(len(panel["genomic_tracks"][index].rows), 1)
-                for panel in panels if index < len(panel.get("genomic_tracks", []))
-            )
+            shared_rows = 1
+            for panel in panels:
+                if index < len(panel.get("genomic_tracks", [])):
+                    row_count = len(panel["genomic_tracks"][index].rows)
+                    if row_count > shared_rows:
+                        shared_rows = row_count
             annotation_row_counts.append(shared_rows)
             tracks.append(f"annotation_{index}")
             shared_height = 0.0
@@ -1970,7 +2056,9 @@ class AlignmentRenderer:
                 "sort_reference_base", self.sort_reference_base
             )
             render_base_detail = span <= self.max_mismatch_render_span
-            axes_by_track = {track: axes[i][panel_idx] for i, track in enumerate(tracks)}
+            axes_by_track = {}
+            for i, track in enumerate(tracks):
+                axes_by_track[track] = axes[i][panel_idx]
             ticks = nice_tick_positions(start, end, target=4)
 
             for ax in axes_by_track.values():
@@ -2131,11 +2219,12 @@ class AlignmentRenderer:
                     start, color=self.visual_colors["legend_edge"],
                     linewidth=0.7, zorder=1,
                 )
-            phase_sets = sorted({
-                str(read.phase_set)
-                for row in rows[start:end] for read in row
-                if getattr(read, "phase_set", None) is not None
-            })
+            phase_set_values = set()
+            for row in rows[start:end]:
+                for read in row:
+                    if getattr(read, "phase_set", None) is not None:
+                        phase_set_values.add(str(read.phase_set))
+            phase_sets = sorted(phase_set_values)
             label = f"HP {haplotype}" if haplotype is not None else "Untagged"
             if len(phase_sets) == 1:
                 label += f" · PS {phase_sets[0]}"
@@ -2169,7 +2258,7 @@ class AlignmentRenderer:
                         (read.query_name, read.reference_name), []
                     ).append(read)
             for members in pair_members.values():
-                ordered_members = sorted(members, key=lambda read: read.ref_start)
+                ordered_members = sorted(members, key=attrgetter("ref_start"))
                 for index in range(0, len(ordered_members) - 1, 2):
                     left, right = ordered_members[index:index + 2]
                     if left.ref_end < right.ref_start:
@@ -2190,9 +2279,13 @@ class AlignmentRenderer:
             and layout == "expand"
             and self.annotate_gap
         ):
-            labels = list(dict.fromkeys(
-                label for read in row for label in [read.gap_label()] if label
-            ))
+            labels = []
+            seen_labels = set()
+            for read in row:
+                label = read.gap_label()
+                if label and label not in seen_labels:
+                    seen_labels.add(label)
+                    labels.append(label)
             if labels:
                 ax.text(
                     1.005, y0 + h / 2, " / ".join(labels),
@@ -2230,10 +2323,17 @@ class AlignmentRenderer:
                     self.visual_colors["deletion"] if blk.op == "D"
                     else self.visual_colors["reference_skip"]
                 )
-                style = "-" if blk.op == "D" else "--"
+                line_width = (
+                    self.styles[
+                        "squish_deletion_line_width"
+                        if squished else "deletion_line_width"
+                    ]
+                ) if blk.op == "D" else self.styles[
+                    "squish_split_read_line_width"
+                    if squished else "split_read_line_width"
+                ]
                 ax.plot([blk.ref_pos, blk.ref_pos + blk.length], [y0 + h / 2, y0 + h / 2],
-                        color=color, linestyle=style,
-                        linewidth=0.5 if squished else 1.3,
+                        color=color, linestyle="-", linewidth=line_width,
                         zorder=3, solid_capstyle="butt")
                 if self.show_indel_lengths and not squished and blk.length >= 3:
                     ax.text(blk.ref_pos + blk.length / 2, y0 + h / 2, f"{blk.length}",

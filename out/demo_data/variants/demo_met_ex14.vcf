@@ -1,0 +1,7 @@
+##fileformat=VCFv4.2
+##reference=GRCh38
+##contig=<ID=chr7,length=159345973>
+##INFO=<ID=GENE,Number=1,Type=String,Description="Gene symbol">
+##INFO=<ID=RNA_EFFECT,Number=1,Type=String,Description="Observed RNA effect">
+#CHROM	POS	ID	REF	ALT	QUAL	FILTER	INFO
+chr7	116771990	MET:c.3028+1G>T	G	T	100	PASS	GENE=MET;RNA_EFFECT=exon_14_skipping

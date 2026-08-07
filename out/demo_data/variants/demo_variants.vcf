@@ -1,0 +1,16 @@
+##fileformat=VCFv4.2
+##contig=<ID=chr9,length=141213431>
+##INFO=<ID=END,Number=1,Type=Integer,Description="End coordinate of the variant">
+#CHROM	POS	ID	REF	ALT	QUAL	FILTER	INFO
+chr9	101867486	demo-snv-01	A	G	60	PASS	.
+chr9	101867493	demo-snv-02	C	T	55	PASS	.
+chr9	101867500	demo-snv-03	A	G	60	PASS	.
+chr9	101867507	demo-ins-01	A	ATG	50	PASS	.
+chr9	101867519	demo-snv-04	G	A	58	PASS	.
+chr9	101867532	demo-snv-05	T	C	62	PASS	.
+chr9	101867542	demo-ins-02	C	CGGA	65	PASS	.
+chr9	101867548	demo-del-01	ATC	A	70	PASS	.
+chr9	101867560	demo-snv-06	C	A	52	PASS	.
+chr9	101867575	demo-sv-del	N	<DEL>	80	PASS	END=101867590
+chr9	101867598	demo-snv-07	G	T	64	PASS	.
+chr9	101867610	demo-sv-dup	N	<DUP>	75	PASS	END=101867618

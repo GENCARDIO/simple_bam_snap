@@ -1,9 +1,0 @@
-Sample	Chromosome	Start	End	Num_Probes	Segment_Mean
-Tumour	chr9	101867481	101867515	18	-0.65
-Tumour	chr9	101867516	101867550	21	-0.15
-Tumour	chr9	101867551	101867585	17	0.45
-Tumour	chr9	101867586	101867620	20	0.85
-Tumour	chrDemo	91	105	10	-0.55
-Tumour	chrDemo	106	120	12	-0.20
-Tumour	chrDemo	121	135	11	0.35
-Tumour	chrDemo	136	150	13	0.75

@@ -14,8 +14,8 @@ DEFAULT_ALIGNMENT_COLORS: Dict[str, Optional[str]] = {
     "normal": "#b0b0b0",
     "large_insert": "#e34948",
     "small_insert": DEFAULT_INSERTION_COLOR,
-    "ff": "#9ec5f4",
-    "rr": "#5598e7",
+    "ff": "#009696",
+    "rr": "#1432c8",
     "everted": "#008300",
     "interchrom": None,
 }
@@ -68,6 +68,31 @@ DEFAULT_CHROMOSOME_PALETTE = [
     "#2a78d6", "#eb6834", "#1baf7a", "#eda100",
     "#e87ba4", "#008300", "#4a3aa7", "#e34948",
 ]
+# IGV's fixed chromosome colours. In "color alignments by pair orientation and
+# insert size" mode, inter-chromosomal reads use the colour of the mate's
+# chromosome. Unknown contigs still receive a deterministic fallback hue.
+DEFAULT_CHROMOSOME_COLORS = {
+    "chr1": "#5050ff", "chr2": "#ce3d32", "chr3": "#749b58",
+    "chr4": "#f0e685", "chr5": "#466983", "chr6": "#ba6338",
+    "chr7": "#5db1dd", "chr8": "#802268", "chr9": "#6bd76b",
+    "chr10": "#d595a7", "chr11": "#924822", "chr12": "#837b8d",
+    "chr13": "#c75127", "chr14": "#d58f5c", "chr15": "#7a65a5",
+    "chr16": "#e4af69", "chr17": "#3b1b53", "chr18": "#cddeb7",
+    "chr19": "#612a79", "chr20": "#ae1f63", "chr21": "#e7c76f",
+    "chr22": "#5a655e", "chrX": "#cc9900", "chrY": "#99cc00",
+    "chrUn": "#404040",
+    "chr23": "#cc9900", "chr24": "#99cc00", "chr25": "#33cc00",
+    "chr26": "#00cc33", "chr27": "#00cc99", "chr28": "#0099cc",
+    "chr29": "#0a47ff", "chr30": "#4775ff", "chr31": "#ffc20a",
+    "chr32": "#ffd147", "chr33": "#990033", "chr34": "#991a00",
+    "chr35": "#996600", "chr36": "#809900", "chr37": "#339900",
+    "chr38": "#00991a", "chr39": "#009966", "chr40": "#008099",
+    "chr41": "#003399", "chr42": "#1a0099", "chr43": "#660099",
+    "chr44": "#990080", "chr45": "#d60047", "chr46": "#ff1463",
+    "chr47": "#00d68f", "chr48": "#14ffb1",
+    "chrI": "#8b9bbb", "chrII": "#ce3d32", "chrIII": "#749b58",
+    "chrIV": "#f0e685", "chr2a": "#ff5747", "chr2b": "#ff7c65",
+}
 DEFAULT_STYLES = {
     "row_height_in": 0.06,
     "squish_row_height_in": 0.015,
@@ -90,6 +115,7 @@ DEFAULT_STYLES = {
     "cnv_fill_alpha": 0.28,
     "baf_alpha": 0.90,
     "peak_fill_alpha": 0.55,
+    "signal_fill_alpha": 0.82,
     "density_fill_alpha": 0.45,
     "haplotype_lane_alpha": 0.055,
     "alignment_edge_width": 0.00,
@@ -97,12 +123,18 @@ DEFAULT_STYLES = {
     "annotation_edge_width": 0.30,
     "pair_link_width": 0.85,
     "squish_pair_link_width": 0.40,
+    "deletion_line_width": 0.65,
+    "squish_deletion_line_width": 0.30,
+    "split_read_line_width": 0.55,
+    "squish_split_read_line_width": 0.30,
     "grid_line_width": 0.60,
     "gene_line_width": 0.55,
     "primary_gene_line_width": 0.85,
     "gene_arrow_size": 2.70,
     "gene_arrow_spacing_px": 24.0,
     "peak_summit_width": 0.85,
+    "signal_line_width": 0.75,
+    "signal_y_max": 0.0,
     "center_guide_alpha": 0.65,
     "center_guide_width": 0.80,
     "center_guide_line_style": "--",
@@ -124,6 +156,7 @@ DEFAULT_CONFIG: Dict[str, Any] = {
     "visual_colors": DEFAULT_VISUAL_COLORS,
     "haplotype_colors": DEFAULT_HAPLOTYPE_COLORS,
     "cytoband_colors": DEFAULT_CYTOBAND_COLORS,
+    "chromosome_colors": DEFAULT_CHROMOSOME_COLORS,
     "chromosome_palette": DEFAULT_CHROMOSOME_PALETTE,
     "styles": DEFAULT_STYLES,
     "preferences": {},
@@ -132,12 +165,12 @@ DEFAULT_CONFIG: Dict[str, Any] = {
 CONFIG_SECTIONS = set(DEFAULT_CONFIG)
 COLOR_SECTIONS = (
     "alignment_colors", "base_colors", "track_colors", "visual_colors",
-    "haplotype_colors", "cytoband_colors",
+    "haplotype_colors", "cytoband_colors", "chromosome_colors",
 )
 ALPHA_STYLE_KEYS = {
     "alignment_alpha", "secondary_alignment_alpha", "mapq_alpha_floor",
     "coverage_alpha", "reference_base_alpha", "cnv_fill_alpha", "baf_alpha",
-    "peak_fill_alpha", "density_fill_alpha",
+    "peak_fill_alpha", "signal_fill_alpha", "density_fill_alpha",
     "haplotype_lane_alpha",
     "center_guide_alpha",
     "sashimi_arc_alpha",
@@ -147,7 +180,7 @@ STRING_STYLE_CHOICES = {
 }
 NONNEGATIVE_STYLE_KEYS = {
     "alignment_edge_width", "squish_alignment_edge_width",
-    "annotation_edge_width",
+    "annotation_edge_width", "signal_y_max",
 }
 
 
@@ -189,7 +222,7 @@ def load_config(path: Optional[str] = None) -> Dict[str, Any]:
         if not isinstance(configured, dict):
             raise ValueError(f"'{section}' must be a YAML mapping.")
         unknown = (
-            [] if section == "haplotype_colors"
+            [] if section in ("haplotype_colors", "chromosome_colors")
             else sorted(set(configured) - set(config[section]))
         )
         if unknown:

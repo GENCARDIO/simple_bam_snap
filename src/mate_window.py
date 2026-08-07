@@ -37,7 +37,8 @@ def mate_candidates(
     candidates: List[Tuple[str, int]] = []
     for read in reads:
         if source == "split":
-            candidates.extend((entry.rname, (entry.start + entry.end) // 2) for entry in read.sa_entries)
+            for entry in read.sa_entries:
+                candidates.append((entry.rname, (entry.start + entry.end) // 2))
             continue
 
         eligible = read.is_discordant if source == "discordant" else read.soft_clip_total >= min_softclip
@@ -58,7 +59,12 @@ def supporting_query_names(
     names = set()
     for read in reads:
         if source == "split":
-            if any(entry.rname == chrom for entry in read.sa_entries):
+            matches_chrom = False
+            for entry in read.sa_entries:
+                if entry.rname == chrom:
+                    matches_chrom = True
+                    break
+            if matches_chrom:
                 names.add(read.query_name)
             continue
         eligible = read.is_discordant if source == "discordant" else read.soft_clip_total >= min_softclip
@@ -92,8 +98,18 @@ def choose_mate_window(
         }[source]
         raise ValueError(f"Cannot create mate view: the primary window has no {description}.")
 
-    counts = Counter(candidate[0] for candidate in candidates)
-    selected_chrom = sorted(counts, key=lambda chrom: (-counts[chrom], chrom))[0]
+    counts = Counter()
+    for candidate in candidates:
+        counts[candidate[0]] += 1
+    selected_chrom = None
+    for chrom in counts:
+        if selected_chrom is None:
+            selected_chrom = chrom
+            continue
+        if counts[chrom] > counts[selected_chrom]:
+            selected_chrom = chrom
+        elif counts[chrom] == counts[selected_chrom] and chrom < selected_chrom:
+            selected_chrom = chrom
     positions = []
     for chrom, position in candidates:
         if chrom == selected_chrom:

@@ -44,6 +44,7 @@ log = logging.getLogger("simple_bam_snap")
 
 REGION_RE = re.compile(r"^(?P<chrom>[\w.\-]+):(?P<start>[\d,]+)-(?P<end>[\d,]+)$")
 PREFERENCE_ALIASES = {
+    "show_alignments": ("no_alignments", True),
     "show_coverage": ("no_coverage", True),
     "show_ideogram": ("no_ideogram", True),
     "pair_colors": ("no_pair_colors", True),
@@ -186,6 +187,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--display_mode", choices=DISPLAY_MODES, default="expand",
         help=("Alignment track appearance: collapse overlays all reads in one row; "
               "expand uses normal-height rows; squish uses compact rows."),
+    )
+    parser.add_argument(
+        "--no_alignments", action="store_true",
+        help=("Hide the BAM alignment rows and their legend, for track-only figures "
+              "such as ChIP-seq signal profiles."),
     )
     parser.add_argument(
         "--view_as_pairs", action="store_true",
@@ -446,6 +452,9 @@ def main(argv=None) -> int:
     if args.mate_view and len(bam_paths) > 1:
         log.error("--mate_view cannot be combined with multiple BAM panels.")
         return 1
+    if args.no_alignments and (args.mate_view or len(bam_paths) > 1):
+        log.error("--no_alignments currently supports single-locus, single-BAM figures only.")
+        return 1
     if args.mate_window_size is not None and args.mate_window_size <= 0:
         log.error("--mate_window_size must be greater than zero.")
         return 1
@@ -646,6 +655,7 @@ def main(argv=None) -> int:
         label=sample_labels[0], mate_view=args.mate_view,
         mate_window_source=args.mate_window_source,
         mate_window_size=args.mate_window_size,
+        show_alignments=not args.no_alignments,
         **common_kwargs,
     )
     try:

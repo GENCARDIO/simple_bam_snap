@@ -1,0 +1,14 @@
+##fileformat=VCFv4.2
+##contig=<ID=chr1,length=10000>
+##contig=<ID=chr2,length=10000>
+##INFO=<ID=END,Number=1,Type=Integer,Description="End coordinate">
+##INFO=<ID=SVTYPE,Number=1,Type=String,Description="SV type">
+##INFO=<ID=SVLEN,Number=1,Type=Integer,Description="SV length">
+##INFO=<ID=MATEID,Number=1,Type=String,Description="ID of mate breakend">
+##INFO=<ID=EVENT,Number=1,Type=String,Description="Breakend event ID">
+#CHROM	POS	ID	REF	ALT	QUAL	FILTER	INFO
+chr1	2000	DEL1000	N	<DEL>	100	PASS	END=3000;SVTYPE=DEL;SVLEN=-1000
+chr1	4000	DUP800	N	<DUP:TANDEM>	100	PASS	END=4800;SVTYPE=DUP;SVLEN=800
+chr1	6000	INV900	N	<INV>	100	PASS	END=6900;SVTYPE=INV;SVLEN=900
+chr1	7600	TRA_chr1_chr2_A	N	N]chr2:5001]	100	PASS	SVTYPE=BND;MATEID=TRA_chr1_chr2_B;EVENT=TRA1
+chr2	5001	TRA_chr1_chr2_B	N	[chr1:7600[N	100	PASS	SVTYPE=BND;MATEID=TRA_chr1_chr2_A;EVENT=TRA1

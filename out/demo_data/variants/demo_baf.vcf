@@ -1,0 +1,25 @@
+##fileformat=VCFv4.2
+##contig=<ID=chrDemo,length=800>
+##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">
+##FORMAT=<ID=AD,Number=R,Type=Integer,Description="Allele depths">
+#CHROM	POS	ID	REF	ALT	QUAL	FILTER	INFO	FORMAT	Tumour
+chrDemo	84	baf-01	A	G	.	PASS	.	GT:AD	0/1:14,13
+chrDemo	89	baf-02	C	T	.	PASS	.	GT:AD	0/1:16,14
+chrDemo	94	baf-03	G	A	.	PASS	.	GT:AD	0/1:23,4
+chrDemo	99	baf-04	T	C	.	PASS	.	GT:AD	0/1:5,24
+chrDemo	104	baf-05	A	G	.	PASS	.	GT:AD	0/1:25,5
+chrDemo	109	baf-06	C	T	.	PASS	.	GT:AD	0/1:6,22
+chrDemo	114	baf-07	G	A	.	PASS	.	GT:AD	0/1:15,13
+chrDemo	119	baf-08	T	C	.	PASS	.	GT:AD	0/1:14,16
+chrDemo	124	baf-09	A	G	.	PASS	.	GT:AD	0/1:17,15
+chrDemo	129	baf-10	C	T	.	PASS	.	GT:AD	0/1:13,14
+chrDemo	134	baf-11	G	A	.	PASS	.	GT:AD	0/1:21,8
+chrDemo	139	baf-12	T	C	.	PASS	.	GT:AD	0/1:7,23
+chrDemo	144	baf-13	A	G	.	PASS	.	GT:AD	0/1:24,6
+chrDemo	149	baf-14	C	T	.	PASS	.	GT:AD	0/1:5,25
+chrDemo	154	baf-15	G	A	.	PASS	.	GT:AD	0/1:20,9
+chrDemo	159	baf-16	T	C	.	PASS	.	GT:AD	0/1:8,21
+chrDemo	164	baf-17	A	G	.	PASS	.	GT:AD	0/1:15,16
+chrDemo	169	baf-18	C	T	.	PASS	.	GT:AD	0/1:14,13
+chrDemo	174	baf-19	G	A	.	PASS	.	GT:AD	0/1:16,15
+chrDemo	179	baf-20	T	C	.	PASS	.	GT:AD	0/1:13,15

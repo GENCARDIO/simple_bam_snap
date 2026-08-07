@@ -10,13 +10,10 @@ from matplotlib.patches import Polygon
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from src.annotations import AnnotationItem, LoadedAnnotationTrack
+from src.config import DEFAULT_BASE_COLORS, DEFAULT_VISUAL_COLORS, load_config
 from src.cytobands import Cytoband
 from src.read_model import CigarBlock
 from src.render import (
-    BASE_COLORS,
-    CNV_GAIN_COLOR,
-    CNV_LOSS_COLOR,
-    IDEOGRAM_WINDOW_COLOR,
     AlignmentRenderer,
     compute_coverage,
     compute_binned_coverage,
@@ -56,8 +53,56 @@ def test_peak_track_draws_signal_blocks_and_narrowpeak_summit():
     assert len(ax.patches) == 1
     assert ax.patches[0].get_height() == pytest.approx(12.5)
     assert any(130 in line.get_xdata() for line in ax.lines)
-    assert ax.get_ylabel() == "signal"
+    assert ax.get_ylabel() == "signalValue"
     plt.close(fig)
+
+
+def test_signal_track_draws_one_continuous_filled_profile_on_fixed_scale():
+    items = [
+        AnnotationItem(100, 110, value=2.0),
+        AnnotationItem(110, 120, value=7.0),
+        AnnotationItem(120, 130, value=3.0),
+    ]
+    track = LoadedAnnotationTrack(
+        "CTCF", "signal", "#00695c", items, [items], "collapse"
+    )
+    config = load_config()
+    config["styles"]["signal_y_max"] = 10.0
+    renderer = AlignmentRenderer(visual_config=config)
+    fig, ax = plt.subplots()
+
+    renderer.draw_annotation_track(ax, track, 95, 135)
+
+    assert not ax.patches
+    assert len(ax.collections) == 1
+    assert len(ax.lines) == 2
+    assert ax.get_ylim()[1] == pytest.approx(11.2)
+    assert ax.get_ylabel() == "normalized signal"
+    plt.close(fig)
+
+
+def test_track_only_render_omits_alignment_rows_and_legend(tmp_path, monkeypatch):
+    items = [AnnotationItem(100, 110, value=4.0)]
+    track = LoadedAnnotationTrack(
+        "CTCF", "signal", "#00695c", items, [items], "collapse"
+    )
+    renderer = AlignmentRenderer(
+        show_alignments=False, show_coverage=False, show_ideogram=False,
+        fig_width=4, dpi=40,
+    )
+
+    def reject_legend(*args, **kwargs):
+        raise AssertionError("The alignment legend must not be drawn in track-only mode")
+
+    monkeypatch.setattr(renderer, "draw_legends", reject_legend)
+    output = tmp_path / "track-only.png"
+    renderer.render(
+        rows=[], chrom="chr1", window_start=90, window_end=120,
+        reference=None, out_path=str(output), genomic_tracks=[track],
+    )
+
+    assert output.is_file()
+    assert renderer.legend_height_in == 0
 
 
 def test_density_track_draws_compact_filled_histogram():
@@ -136,7 +181,7 @@ def test_coverage_colors_only_snvs_above_vaf_threshold():
 
     assert len(ax.patches) == 2  # grey depth plus the 40% A allele; 20% C is hidden
     assert ax.patches[1].get_height() == 2
-    assert to_hex(ax.patches[1].get_facecolor()) == BASE_COLORS["A"]
+    assert to_hex(ax.patches[1].get_facecolor()) == DEFAULT_BASE_COLORS["A"]
     assert any(
         text.get_text() == "A 2/5 40% F1/R1 BQ35 MQ60"
         for text in ax.texts
@@ -272,6 +317,49 @@ def test_indel_length_labels_are_opt_in():
 
     assert not default_ax.texts
     assert [text.get_text() for text in labelled_ax.texts] == ["5", "+4"]
+    plt.close(fig)
+
+
+def test_split_read_junction_is_a_thin_solid_line():
+    renderer = AlignmentRenderer(shade_by_mapq=False)
+    read = SimpleNamespace(
+        ref_start=100, ref_end=140, pair_category="normal", mate_chrom="chr1",
+        is_secondary=False, is_duplicate=False, mapq=60,
+        blocks=[
+            CigarBlock("M", 100, 0, 10),
+            CigarBlock("N", 110, 10, 20),
+            CigarBlock("M", 130, 10, 10),
+        ],
+        mismatches=[], query_sequence="A" * 20,
+    )
+    fig, ax = plt.subplots()
+
+    renderer.draw_read(ax, read, y0=0.1, h=0.8, render_base_detail=False)
+
+    assert len(ax.lines) == 1
+    assert ax.lines[0].get_linestyle() == "-"
+    assert ax.lines[0].get_linewidth() == pytest.approx(0.55)
+    plt.close(fig)
+
+
+def test_deletion_connector_uses_thin_default_line_width():
+    renderer = AlignmentRenderer(shade_by_mapq=False)
+    read = SimpleNamespace(
+        ref_start=100, ref_end=1120, pair_category="normal", mate_chrom="chr1",
+        is_secondary=False, is_duplicate=False, mapq=60,
+        blocks=[
+            CigarBlock("M", 100, 0, 10),
+            CigarBlock("D", 110, 10, 1000),
+            CigarBlock("M", 1110, 10, 10),
+        ],
+        mismatches=[], query_sequence="A" * 20,
+    )
+    fig, ax = plt.subplots()
+
+    renderer.draw_read(ax, read, y0=0.1, h=0.8, render_base_detail=False)
+
+    assert len(ax.lines) == 1
+    assert ax.lines[0].get_linewidth() == pytest.approx(0.65)
     plt.close(fig)
 
 
@@ -458,7 +546,7 @@ def test_base_sort_highlights_the_alternative_allele_cell():
 
     assert len(ax.patches) == 2
     assert ax.patches[-1].get_x() == 10
-    assert to_hex(ax.patches[-1].get_facecolor()) == BASE_COLORS["A"]
+    assert to_hex(ax.patches[-1].get_facecolor()) == DEFAULT_BASE_COLORS["A"]
     plt.close(fig)
 
 
@@ -526,7 +614,7 @@ def test_ideogram_marks_the_window_in_red():
     axes_bounds = ax.get_window_extent()
     assert chromosome_bounds.x0 == pytest.approx(axes_bounds.x0)
     assert chromosome_bounds.x1 == pytest.approx(axes_bounds.x1)
-    assert to_hex(ax.patches[1].get_facecolor()) == IDEOGRAM_WINDOW_COLOR
+    assert to_hex(ax.patches[1].get_facecolor()) == DEFAULT_VISUAL_COLORS["ideogram_window"]
     assert {text.get_text() for text in ax.texts} == {"chr1", "0.0 Mb", "window"}
     plt.close(fig)
 
@@ -553,7 +641,7 @@ def test_ideogram_draws_cytobands_and_centromere():
     assert max(neck_y) < 0.72
     assert min(neck_y) < 0.5 < max(neck_y)
     assert to_hex(ax.patches[5].get_facecolor()) == "#b84b4b"
-    assert to_hex(ax.patches[-1].get_facecolor()) == IDEOGRAM_WINDOW_COLOR
+    assert to_hex(ax.patches[-1].get_facecolor()) == DEFAULT_VISUAL_COLORS["ideogram_window"]
     plt.close(fig)
 
 
@@ -610,7 +698,8 @@ def test_primary_isoform_label_has_visible_marker():
     renderer = AlignmentRenderer()
     item = AnnotationItem(
         100, 160, "GENE1", "+", blocks=[(100, 160)],
-        transcript_label="TX1", primary_rank=1, primary_label="MANE Select",
+        group="g1", group_label="GENE1", transcript_label="TX1",
+        primary_rank=1, primary_label="MANE Select",
     )
     track = LoadedAnnotationTrack(
         "Genes", "gtf", "#17217a", [item], [[item]], display_mode="expand"
@@ -620,7 +709,25 @@ def test_primary_isoform_label_has_visible_marker():
 
     renderer.draw_annotation_track(ax, track, 90, 170)
 
-    assert any(text.get_text() == "TX1 ★" for text in ax.texts)
+    assert any(text.get_text() == "GENE1 · TX1 ★" for text in ax.texts)
+    plt.close(fig)
+
+
+def test_expanded_gene_label_falls_back_to_gene_id():
+    renderer = AlignmentRenderer()
+    item = AnnotationItem(
+        100, 160, "tx1", "+", blocks=[(100, 160)],
+        group="gene_id_1", transcript_label="tx1",
+    )
+    track = LoadedAnnotationTrack(
+        "Genes", "gtf", "#17217a", [item], [[item]], display_mode="expand"
+    )
+    fig, ax = plt.subplots(figsize=(8, 1))
+    ax.set_xlim(90, 170)
+
+    renderer.draw_annotation_track(ax, track, 90, 170)
+
+    assert any(text.get_text() == "gene_id_1 · tx1" for text in ax.texts)
     plt.close(fig)
 
 
@@ -639,7 +746,7 @@ def test_cnv_track_draws_log2_segments_around_zero_with_gain_loss_colours():
 
     assert len(ax.patches) == 2
     assert [to_hex(patch.get_facecolor()) for patch in ax.patches] == [
-        CNV_LOSS_COLOR, CNV_GAIN_COLOR,
+        DEFAULT_VISUAL_COLORS["cnv_loss"], DEFAULT_VISUAL_COLORS["cnv_gain"],
     ]
     assert [line.get_ydata()[0] for line in ax.lines] == [0, -0.6, 0.8]
     assert [tick.get_text() for tick in ax.get_yticklabels()] == ["-1", "0", "1"]

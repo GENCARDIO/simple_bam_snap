@@ -1,0 +1,12 @@
+##fileformat=VCFv4.2
+##contig=<ID=chrDemo,length=800>
+##INFO=<ID=END,Number=1,Type=Integer,Description="End coordinate of the variant">
+#CHROM	POS	ID	REF	ALT	QUAL	FILTER	INFO
+chrDemo	88	R-SNV-01	T	C	56	PASS	.
+chrDemo	105	R-SNV-02	A	G	64	PASS	.
+chrDemo	119	R-SNV-03	G	A	78	PASS	.
+chrDemo	129	R-INS-01	A	ATC	60	PASS	.
+chrDemo	146	R-SNV-04	T	C	80	PASS	.
+chrDemo	159	R-SNV-05	G	A	73	PASS	.
+chrDemo	170	R-SNV-06	C	T	69	PASS	.
+chrDemo	174	R-SV-DEL	N	<DEL>	71	PASS	END=179

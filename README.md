@@ -2,7 +2,7 @@
 
 Create an IGV-like image from an indexed BAM without opening a genome browser.
 
-## Get an image in 60 seconds
+## Basic usage
 
 ```bash
 git clone https://github.com/GENCARDIO/simple_bam_snap.git
@@ -33,13 +33,12 @@ that track.
 
 ## What you get by default
 
-- chromosome ideogram with the current window marked in red;
-- RefSeq isoforms for recognized hg19/GRCh37 and hg38/GRCh38 BAMs;
-- coverage and packed read alignments;
-- automatic alignment downsampling above 100× depth;
-- discordant-pair, indel, mismatch, and soft-clip colours;
-- borderless reads and a compartmented legend;
-- genomic coordinates in bp, kb, Mb, or Gb—never exponent notation.
+- chromosome ideogram with the current window marked in red
+- RefSeq isoforms for recognized hg19/GRCh37 and hg38/GRCh38 BAMs
+- Coverage and packed read alignments
+- Automatic alignment downsampling above 100× depth
+- Discordant-pair, indel, mismatch, and soft-clip colours
+
 
 Add `--fasta reference.fa` to enable reference bases, mismatch detection, and
 SNV allele fractions in coverage. A missing FASTA index is created when
@@ -258,7 +257,7 @@ Quote the entire value so `#` is not treated as a shell comment.
 | GFF/GFF3/GTF | genes and transcripts | UCSC navy exon/UTR models |
 | VCF | SNVs and structural variants | burgundy variant intervals |
 | narrowPeak/broadPeak | ChIP-seq, ATAC-seq, DNase-seq | filled signal peaks |
-| signal | non-negative four-column signal | filled signal from zero |
+| signal | normalized ChIP/ATAC/DNase pileup | continuous filled profile |
 | SEG | segmented copy number | gain/loss log2 track |
 | bedGraph/log2/CNV | binned or segmented log2 ratios | signed zero-centered track |
 
@@ -280,6 +279,8 @@ UTRs are thinner. Use `--primary_isoforms prefer` to select MANE Select,
 RefSeq Select, Ensembl canonical, APPRIS principal, or another recognized
 primary marker, while keeping all isoforms for genes without a marker. Use
 `only` to remove genes without a primary marker; `all` is the default.
+Packed and expanded gene models retain both identifiers in gene-first form,
+for example `TGFBR1 · NM_004612.4`; collapsed models show the gene name only.
 
 ### Compressed tracks must be indexed
 
@@ -314,8 +315,24 @@ python3 simple_bam_snap.py \
   --output_name chromatin
 ```
 
-Peak height uses `signalValue`, then BED score. NarrowPeak summits are marked.
-Use `density` when intervals would otherwise overplot.
+Peak-call files remain discrete intervals: height uses `signalValue`, then BED
+score, and narrowPeak summits are marked. Four-column `signal` files are drawn
+as one continuous filled pileup profile:
+
+```bash
+python3 simple_bam_snap.py \
+  --bam sample.bam \
+  --region chr1:100000-104000 \
+  --custom_track 'control.signal.gz,signal,Control,#00695c,collapse' \
+  --custom_track 'knockdown.signal.gz,signal,Knockdown,#22d3a6,collapse' \
+  --no_alignments \
+  --no_coverage \
+  --output_name ctcf-signal
+```
+
+Set one shared `styles.signal_y_max` in YAML when comparing normalized samples;
+`0` keeps automatic scaling. Use `density` when called intervals would otherwise
+overplot.
 
 ### Copy number, BAF, and LOH
 
@@ -444,9 +461,9 @@ Supported formats: PNG, SVG, SVGZ, PDF, JPEG, TIFF, and WebP. Raster width is
 | grey | normal/concordant |
 | red | unexpectedly large FR insert |
 | purple | unexpectedly small FR insert; also used for CIGAR insertions |
-| light/medium blue | FF/RR same-strand pair |
+| teal / blue | FF/RR same-strand pair (IGV orientation colours) |
 | green | everted RF pair |
-| chromosome-specific colour | inter-chromosomal mate |
+| IGV chromosome colour | inter-chromosomal pair, keyed by the mate chromosome |
 | lighter fill | lower MAPQ |
 
 The expected insert-size range is estimated from eligible FR pairs in the
@@ -541,21 +558,85 @@ overly restrictive `--only` filter.
 
 ## Examples
 
-Start with these rendered examples:
+Click any preview for the full-resolution figure.
 
-- [default RefSeq isoforms](out/30_default_refseq_isoforms.png)
-- [true squish layout](out/02_squish_packed.png)
-- [paired alignments](out/15_view_as_pairs.png)
-- [two-locus mate view](out/06_mate_view_discordant.png)
-- [SNV VAF in coverage](out/16_coverage_snv_vaf.png)
-- [haplotype split view](out/19_haplotype_split_view.png)
-- [RNA-seq sashimi](out/24_rnaseq_sashimi.png)
-- [ChIP-seq and density](out/26_chipseq_peaks_density.png)
-- [multi-BAM with companion VCFs](out/27_multi_bam_vcf_companions.png)
-- [CNV with BAF/LOH](out/18_variant_evidence_baf_loh.png)
-- [SVG output](out/25_vector_output.svg)
+<table>
+  <tr>
+    <td width="50%">
+      <a href="out/30_default_refseq_isoforms.png"><img src="out/30_default_refseq_isoforms.png" alt="Default genomic snapshot with RefSeq isoforms, coverage, and alignments"></a><br>
+      <strong>Default genomic snapshot</strong><br>
+      <sub>Ideogram, RefSeq isoforms, coverage, alignments, and grouped legend.</sub>
+    </td>
+    <td width="50%">
+      <a href="out/24_rnaseq_sashimi.png"><img src="out/24_rnaseq_sashimi.png" alt="MET exon 14 splice-site variant with RNA-seq and sashimi evidence"></a><br>
+      <strong>MET exon 14 skipping</strong><br>
+      <sub>Splice-site VCF, gene model, RNA-seq coverage, sashimi arcs, and split reads.</sub>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%">
+      <a href="out/31_structural_variant_evidence.png"><img src="out/31_structural_variant_evidence.png" alt="Deletion, tandem duplication, inversion, and translocation with multiple classes of sequencing evidence"></a><br>
+      <strong>Structural-variant evidence</strong><br>
+      <sub>Deletion, tandem duplication, inversion, and chr1–chr2 translocation with event-specific coverage, pair orientation, split reads, and soft clips.</sub>
+    </td>
+    <td width="50%">
+      <a href="out/16_coverage_snv_vaf.png"><img src="out/16_coverage_snv_vaf.png" alt="Coverage track with SNV variant allele fractions"></a><br>
+      <strong>SNV allele fractions</strong><br>
+      <sub>Coverage with strand-aware alternative-allele evidence and VAF labels.</sub>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%">
+      <a href="out/19_haplotype_split_view.png"><img src="out/19_haplotype_split_view.png" alt="Reads separated into phased haplotype lanes"></a><br>
+      <strong>Phased haplotype lanes</strong><br>
+      <sub>HP/PS-aware read colouring and lane separation.</sub>
+    </td>
+    <td width="50%">
+      <a href="out/18_variant_evidence_baf_loh.png"><img src="out/18_variant_evidence_baf_loh.png" alt="Copy-number segments with B-allele fractions and loss of heterozygosity"></a><br>
+      <strong>CNV with BAF/LOH</strong><br>
+      <sub>Copy-number segments integrated with heterozygous-variant evidence.</sub>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%">
+      <a href="out/26_chipseq_peaks_density.png"><img src="out/26_chipseq_peaks_density.png" alt="Normalized CTCF ChIP-seq signal profiles"></a><br>
+      <strong>ChIP-seq signal profiles</strong><br>
+      <sub>Track-only normalized signal comparison with gene annotations.</sub>
+    </td>
+    <td width="50%">
+      <a href="out/27_multi_bam_vcf_companions.png"><img src="out/27_multi_bam_vcf_companions.png" alt="Multiple BAM samples with companion VCF tracks"></a><br>
+      <strong>Multi-sample comparison</strong><br>
+      <sub>Stacked BAM panels with sample-matched companion VCFs.</sub>
+    </td>
+  </tr>
+</table>
 
-![Default snapshot with ideogram, RefSeq, coverage, alignments, and grouped legend](out/30_default_refseq_isoforms.png)
+Additional examples: [true squish layout](out/02_squish_packed.png),
+[paired alignments](out/15_view_as_pairs.png),
+[two-locus mate view](out/06_mate_view_discordant.png), and
+[editable SVG output](out/25_vector_output.svg).
+
+The synthetic examples use expanded, deterministic datasets: 96 tumour, 72
+normal, 84 relapse, 300 METex14 RNA alignments, and 703 structural-variant
+alignments; 12 general VCF records; 20 BAF loci; 12 H3K27ac, 7 H3K27me3, and 24
+DNase peaks; and three 4 kb normalized CTCF signal profiles. Rendered figures
+remain directly under `out/`; their generated inputs are grouped by type:
+
+```text
+out/demo_data/
+├── alignments/   # BAM and BAI
+├── annotations/  # BED, GTF, SEG, and peak calls
+├── config/       # Example YAML themes
+├── reference/    # FASTA and FAI
+├── signals/      # Quantitative signal tracks and indexes
+└── variants/     # VCF and tabix indexes
+```
+
+Rebuild the demo inputs, indexes, and affected figures with:
+
+```bash
+bash regenerate_demo_examples.sh
+```
 
 ## Tests
 
