@@ -33,6 +33,88 @@ For human BAMs, the first run may download and index the matching NCBI RefSeq
 gene annotation. Use `--refseq none` if you want the image immediately without
 that track.
 
+## Examples
+
+Click any preview for the full-resolution figure.
+
+<table>
+  <tr>
+    <td width="50%">
+      <a href="out/30_default_refseq_isoforms.png"><img src="out/30_default_refseq_isoforms.png" alt="Default genomic snapshot with RefSeq isoforms, coverage, and alignments"></a><br>
+      <strong>Default genomic snapshot</strong><br>
+      <sub>Ideogram, RefSeq isoforms, coverage, alignments, and grouped legend.</sub>
+    </td>
+    <td width="50%">
+      <a href="out/24_rnaseq_sashimi.png"><img src="out/24_rnaseq_sashimi.png" alt="MET exon 14 splice-site variant with RNA-seq and sashimi evidence"></a><br>
+      <strong>MET exon 14 skipping</strong><br>
+      <sub>Splice-site VCF, gene model, RNA-seq coverage, sashimi arcs, and split reads.</sub>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%">
+      <a href="out/31_structural_variant_evidence.png"><img src="out/31_structural_variant_evidence.png" alt="Deletion, tandem duplication, inversion, and translocation with multiple classes of sequencing evidence"></a><br>
+      <strong>Structural-variant evidence</strong><br>
+      <sub>Deletion, tandem duplication, inversion, and chr1–chr2 translocation with event-specific coverage, pair orientation, split reads, and soft clips.</sub>
+    </td>
+    <td width="50%">
+      <a href="out/16_coverage_snv_vaf.png"><img src="out/16_coverage_snv_vaf.png" alt="Coverage track with SNV variant allele fractions"></a><br>
+      <strong>SNV allele fractions</strong><br>
+      <sub>Coverage with strand-aware alternative-allele evidence and VAF labels.</sub>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%">
+      <a href="out/19_haplotype_split_view.png"><img src="out/19_haplotype_split_view.png" alt="Reads separated into phased haplotype lanes"></a><br>
+      <strong>Phased haplotype lanes</strong><br>
+      <sub>HP/PS-aware read colouring and lane separation.</sub>
+    </td>
+    <td width="50%">
+      <a href="out/18_variant_evidence_baf_loh.png"><img src="out/18_variant_evidence_baf_loh.png" alt="Copy-number segments with B-allele fractions and loss of heterozygosity"></a><br>
+      <strong>CNV with BAF/LOH</strong><br>
+      <sub>Copy-number segments integrated with heterozygous-variant evidence.</sub>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%">
+      <a href="out/26_chipseq_peaks_density.png"><img src="out/26_chipseq_peaks_density.png" alt="Normalized CTCF ChIP-seq signal profiles"></a><br>
+      <strong>ChIP-seq signal profiles</strong><br>
+      <sub>Track-only normalized signal comparison with gene annotations.</sub>
+    </td>
+    <td width="50%">
+      <a href="out/27_multi_bam_vcf_companions.png"><img src="out/27_multi_bam_vcf_companions.png" alt="Multiple BAM samples with companion VCF tracks"></a><br>
+      <strong>Multi-sample comparison</strong><br>
+      <sub>Stacked BAM panels with sample-matched companion VCFs.</sub>
+    </td>
+  </tr>
+</table>
+
+Additional examples: [true squish layout](out/02_squish_packed.png),
+[paired alignments](out/15_view_as_pairs.png),
+[two-locus mate view](out/06_mate_view_discordant.png), and
+[editable SVG output](out/25_vector_output.svg).
+
+The synthetic examples use expanded, deterministic datasets: 96 tumour, 72
+normal, 84 relapse, 300 METex14 RNA alignments, and 703 structural-variant
+alignments; 12 general VCF records; 20 BAF loci; 12 H3K27ac, 7 H3K27me3, and 24
+DNase peaks; and three 4 kb normalized CTCF signal profiles. Rendered figures
+remain directly under `out/`; their generated inputs are grouped by type:
+
+```text
+out/demo_data/
+├── alignments/   # BAM and BAI
+├── annotations/  # BED, GTF, SEG, and peak calls
+├── config/       # Example YAML themes
+├── reference/    # FASTA and FAI
+├── signals/      # Quantitative signal tracks and indexes
+└── variants/     # VCF and tabix indexes
+```
+
+Rebuild the demo inputs, indexes, and affected figures with:
+
+```bash
+bash regenerate_demo_examples.sh
+```
+
 ## What you get by default
 
 - chromosome ideogram with the current window marked in red
@@ -557,88 +639,6 @@ softclip`.
 
 Try another `--mate_window_source`, lower `--min_softclip`, or remove an
 overly restrictive `--only` filter.
-
-## Examples
-
-Click any preview for the full-resolution figure.
-
-<table>
-  <tr>
-    <td width="50%">
-      <a href="out/30_default_refseq_isoforms.png"><img src="out/30_default_refseq_isoforms.png" alt="Default genomic snapshot with RefSeq isoforms, coverage, and alignments"></a><br>
-      <strong>Default genomic snapshot</strong><br>
-      <sub>Ideogram, RefSeq isoforms, coverage, alignments, and grouped legend.</sub>
-    </td>
-    <td width="50%">
-      <a href="out/24_rnaseq_sashimi.png"><img src="out/24_rnaseq_sashimi.png" alt="MET exon 14 splice-site variant with RNA-seq and sashimi evidence"></a><br>
-      <strong>MET exon 14 skipping</strong><br>
-      <sub>Splice-site VCF, gene model, RNA-seq coverage, sashimi arcs, and split reads.</sub>
-    </td>
-  </tr>
-  <tr>
-    <td width="50%">
-      <a href="out/31_structural_variant_evidence.png"><img src="out/31_structural_variant_evidence.png" alt="Deletion, tandem duplication, inversion, and translocation with multiple classes of sequencing evidence"></a><br>
-      <strong>Structural-variant evidence</strong><br>
-      <sub>Deletion, tandem duplication, inversion, and chr1–chr2 translocation with event-specific coverage, pair orientation, split reads, and soft clips.</sub>
-    </td>
-    <td width="50%">
-      <a href="out/16_coverage_snv_vaf.png"><img src="out/16_coverage_snv_vaf.png" alt="Coverage track with SNV variant allele fractions"></a><br>
-      <strong>SNV allele fractions</strong><br>
-      <sub>Coverage with strand-aware alternative-allele evidence and VAF labels.</sub>
-    </td>
-  </tr>
-  <tr>
-    <td width="50%">
-      <a href="out/19_haplotype_split_view.png"><img src="out/19_haplotype_split_view.png" alt="Reads separated into phased haplotype lanes"></a><br>
-      <strong>Phased haplotype lanes</strong><br>
-      <sub>HP/PS-aware read colouring and lane separation.</sub>
-    </td>
-    <td width="50%">
-      <a href="out/18_variant_evidence_baf_loh.png"><img src="out/18_variant_evidence_baf_loh.png" alt="Copy-number segments with B-allele fractions and loss of heterozygosity"></a><br>
-      <strong>CNV with BAF/LOH</strong><br>
-      <sub>Copy-number segments integrated with heterozygous-variant evidence.</sub>
-    </td>
-  </tr>
-  <tr>
-    <td width="50%">
-      <a href="out/26_chipseq_peaks_density.png"><img src="out/26_chipseq_peaks_density.png" alt="Normalized CTCF ChIP-seq signal profiles"></a><br>
-      <strong>ChIP-seq signal profiles</strong><br>
-      <sub>Track-only normalized signal comparison with gene annotations.</sub>
-    </td>
-    <td width="50%">
-      <a href="out/27_multi_bam_vcf_companions.png"><img src="out/27_multi_bam_vcf_companions.png" alt="Multiple BAM samples with companion VCF tracks"></a><br>
-      <strong>Multi-sample comparison</strong><br>
-      <sub>Stacked BAM panels with sample-matched companion VCFs.</sub>
-    </td>
-  </tr>
-</table>
-
-Additional examples: [true squish layout](out/02_squish_packed.png),
-[paired alignments](out/15_view_as_pairs.png),
-[two-locus mate view](out/06_mate_view_discordant.png), and
-[editable SVG output](out/25_vector_output.svg).
-
-The synthetic examples use expanded, deterministic datasets: 96 tumour, 72
-normal, 84 relapse, 300 METex14 RNA alignments, and 703 structural-variant
-alignments; 12 general VCF records; 20 BAF loci; 12 H3K27ac, 7 H3K27me3, and 24
-DNase peaks; and three 4 kb normalized CTCF signal profiles. Rendered figures
-remain directly under `out/`; their generated inputs are grouped by type:
-
-```text
-out/demo_data/
-├── alignments/   # BAM and BAI
-├── annotations/  # BED, GTF, SEG, and peak calls
-├── config/       # Example YAML themes
-├── reference/    # FASTA and FAI
-├── signals/      # Quantitative signal tracks and indexes
-└── variants/     # VCF and tabix indexes
-```
-
-Rebuild the demo inputs, indexes, and affected figures with:
-
-```bash
-bash regenerate_demo_examples.sh
-```
 
 ## Tests
 
