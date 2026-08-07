@@ -6,7 +6,8 @@ import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from simple_bam_snap import apply_config_preferences, build_parser
+from locus_snap import apply_config_preferences, build_parser
+import simple_bam_snap as legacy_cli
 from src.config import (
     DEFAULT_ALIGNMENT_COLORS,
     DEFAULT_CHROMOSOME_COLORS,
@@ -15,6 +16,10 @@ from src.config import (
     load_config,
 )
 from src.render import AlignmentRenderer, chrom_color
+
+
+def test_legacy_cli_reexports_locus_snap_parser():
+    assert legacy_cli.build_parser is build_parser
 
 
 def test_partial_alignment_color_config_inherits_defaults(tmp_path):

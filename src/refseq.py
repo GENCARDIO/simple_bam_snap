@@ -17,7 +17,7 @@ import pysam
 from src.cytobands import resolve_cytobands
 
 
-log = logging.getLogger("simple_bam_snap.refseq")
+log = logging.getLogger("locus_snap.refseq")
 
 DEFAULT_REFSEQ_DIR = Path(__file__).resolve().parent.parent / "data" / "ucsc" / "refseq"
 REFSEQ_SOURCES = {
@@ -122,13 +122,13 @@ def ensure_refseq(
             bgzf_path = temp_dir / output_path.name
             try:
                 request = Request(
-                    annotation_url, headers={"User-Agent": "simple-bam-snap/1"}
+                    annotation_url, headers={"User-Agent": "LocusSnap/1"}
                 )
                 with urlopen(request, timeout=180) as response, archive_path.open("wb") as target:
                     shutil.copyfileobj(response, target, length=1024 * 1024)
                 if report_url:
                     request = Request(
-                        report_url, headers={"User-Agent": "simple-bam-snap/1"}
+                        report_url, headers={"User-Agent": "LocusSnap/1"}
                     )
                     with urlopen(request, timeout=60) as response, report_path.open("wb") as target:
                         shutil.copyfileobj(response, target, length=1024 * 1024)
