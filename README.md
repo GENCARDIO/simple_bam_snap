@@ -2,6 +2,8 @@
 
 Create an IGV-like image from an indexed BAM without opening a genome browser.
 
+First version of this tool was extremely simple. Now, and aided by codex, it provides a fair amount of features (might rename the tool probably).
+
 ## Basic usage
 
 ```bash
